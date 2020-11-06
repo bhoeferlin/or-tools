@@ -1,20 +1,43 @@
 package(default_visibility = ["//visibility:public"])
 
+config_setting(
+    name = "on_linux",
+    constraint_values = [
+        "@platforms//os:linux",
+    ],
+)
+
 cc_library(
     name = "base",
     hdrs = [
         "basictypes.h",
-        "casts.h",
         "commandlineflags.h",
         "integral_types.h",
         "logging.h",
         "macros.h",
-        "port.h",
-        "strtoint.h",  # Move to a separate library?
+	"version.h",
+    ],
+    srcs = [
+        "logging.cc",
+        "version.cc",
+    ],
+    copts = [
+        "-DOR_TOOLS_MAJOR=7",
+        "-DOR_TOOLS_MINOR=8",
     ],
     deps = [
         "@com_github_gflags_gflags//:gflags",
         "@com_github_glog_glog//:glog",
+    ],
+)
+
+cc_library(
+    name = "container_logging",
+    hdrs = [
+        "container_logging.h",
+    ],
+    deps = [
+        ":base",
     ],
 )
 
@@ -28,17 +51,6 @@ cc_library(
     ],
 )
 
-
-cc_library(
-    name = "status",
-    hdrs = [
-        "status.h",
-    ],
-    deps = [
-        ":base",
-    ],
-)
-
 cc_library(
     name = "statusor",
     hdrs = [
@@ -46,7 +58,19 @@ cc_library(
     ],
     deps = [
         ":base",
-        ":status",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "status_macros",
+    hdrs = [
+        "status_macros.h",
+    ],
+    deps = [
+        ":base",
+        ":statusor",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -61,25 +85,9 @@ cc_library(
 )
 
 cc_library(
-    name = "strings",
-    srcs = [
-        "join.cc",
-        "numbers.cc",
-        "split.cc",
-        "string_view.cc",
-        "stringprintf.cc",
-    ],
+    name = "ptr_util",
     hdrs = [
-        "join.h",
-        "numbers.h",
-        "split.h",
-        "string_view.h",
-        "stringpiece_utils.h",
-        "stringprintf.h",
-        "strutil.h",
-    ],
-    deps = [
-        ":base",
+        "ptr_util.h",
     ],
 )
 
@@ -93,7 +101,7 @@ cc_library(
     ],
     deps = [
         ":base",
-        ":strings",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -107,9 +115,20 @@ cc_library(
     ],
     deps = [
         ":base",
-        ":status",
-        ":strings",
-        "@com_google_protobuf_cc//:protobuf",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+cc_library(
+    name = "filelineiter",
+    hdrs = ["filelineiter.h"],
+    deps = [
+        ":base",
+        ":file",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -125,37 +144,23 @@ cc_library(
     deps = [
         ":base",
         ":file",
-        ":status",
-        ":strings",
-        "@com_google_protobuf_cc//:protobuf",
+        ":statusor",
+
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
 cc_library(
-    name = "callback",
+    name = "protoutil",
     hdrs = [
-        "callback.h",
+        "protoutil.h",
     ],
     deps = [
-        ":base",
-    ],
-)
-
-cc_library(
-    name = "filelinereader",
-    srcs = [
-        "filelinereader.cc",
-    ],
-    hdrs = [
-        "filelinereader.h",
-    ],
-    deps = [
-        ":base",
-        ":callback",
-        ":file",
-        ":status",
-        ":strings",
-        "@com_google_protobuf_cc//:protobuf",
+        ":statusor",
+        ":timer",
+        "@com_google_absl//absl/status",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -167,8 +172,8 @@ cc_library(
     ],
     deps = [
         ":base",
-        ":strings",
-        "@com_google_protobuf_cc//:protobuf",
+        "@com_google_absl//absl/strings",
+        #"@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -190,6 +195,7 @@ cc_library(
     deps = [
         ":base",
         ":hash",
+        "@com_google_absl//absl/random",
     ],
 )
 
@@ -211,7 +217,7 @@ cc_library(
     deps = [
         ":base",
         ":hash",
-        ":strings",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -246,19 +252,27 @@ cc_library(
 )
 
 cc_library(
-    name = "stl_util",
+    name = "status_builder",
     hdrs = [
-        "stl_util.h",
+        "status_builder.h",
     ],
     deps = [
         ":base",
+        "@com_google_absl//absl/status",
     ],
 )
 
 cc_library(
-    name = "sparsetable",
+    name = "protobuf_util",
     hdrs = [
-        "sparsetable.h",
+        "protobuf_util.h",
+    ],
+)
+
+cc_library(
+    name = "stl_util",
+    hdrs = [
+        "stl_util.h",
     ],
     deps = [
         ":base",
@@ -286,27 +300,16 @@ cc_library(
 )
 
 cc_library(
-    name = "strongly_connected_components",
-    hdrs = [
-        "strongly_connected_components.h",
-    ],
-    deps = [
-        ":base",
-    ],
-)
-
-cc_library(
     name = "timer",
     srcs = [
-        "time_support.cc",
         "timer.cc",
     ],
     hdrs = [
-        "time_support.h",
         "timer.h",
     ],
     deps = [
         ":base",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -350,19 +353,6 @@ cc_library(
 )
 
 cc_library(
-    name = "mutex",
-    srcs = [
-        "mutex.cc",
-    ],
-    hdrs = [
-        "mutex.h",
-    ],
-    deps = [
-        ":base",
-    ],
-)
-
-cc_library(
     name = "threadpool",
     srcs = [
         "threadpool.cc",
@@ -372,27 +362,16 @@ cc_library(
     ],
     deps = [
         ":base",
-        ":mutex",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
 cc_library(
-    name = "inlined_vector",
-    hdrs = [
-        "inlined_vector.h",
-    ],
-    deps = [
-        ":base",
-    ],
-)
-
-cc_library(
-    name = "span",
-    hdrs = [
-        "span.h",
-    ],
-    deps = [
-        ":base",
-        ":inlined_vector",
-    ],
+    name = "dynamic_library",
+    hdrs = ["dynamic_library.h"],
+    deps = [":base"],
+    linkopts = select({
+        "on_linux": ["-Wl,--no-as-needed -ldl"],
+        "//conditions:default": [],
+    }),
 )

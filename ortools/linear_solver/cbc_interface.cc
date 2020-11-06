@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,16 +16,15 @@
 #include <limits>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "ortools/base/commandlineflags.h"
 #include "ortools/base/hash.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/port.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/base/timer.h"
 #include "ortools/linear_solver/linear_solver.h"
 
@@ -54,6 +53,14 @@ class CBCInterface : public MPSolverInterface {
 
   // Sets the optimization direction (min/max).
   void SetOptimizationDirection(bool maximize) override;
+
+  // ----- Parameters -----
+
+  absl::Status SetNumThreads(int num_threads) override {
+    CHECK_GE(num_threads, 1);
+    num_threads_ = num_threads;
+    return absl::OkStatus();
+  }
 
   // ----- Solve -----
   // Solve the problem using the parameter values specified.
@@ -148,6 +155,7 @@ class CBCInterface : public MPSolverInterface {
   double best_objective_bound_;
   // Special way to handle the relative MIP gap parameter.
   double relative_mip_gap_;
+  int num_threads_ = 1;
 };
 
 // ----- Solver -----
@@ -306,7 +314,7 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
         MPConstraint* const ct = solver_->constraints_[i];
         const int size = ct->coefficients_.size();
         int j = 0;
-        for (CoeffEntry entry : ct->coefficients_) {
+        for (const auto& entry : ct->coefficients_) {
           const int index = MPSolverVarIndexToCbcVarIndex(entry.first->index());
           indices[j] = index;
           coefs[j] = entry.second;
@@ -335,7 +343,7 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
   osi_.setObjSense(maximize_ ? -1 : 1);
 
   sync_status_ = MODEL_SYNCHRONIZED;
-  VLOG(1) << StringPrintf("Model built in %.3f seconds.", timer.Get());
+  VLOG(1) << absl::StrFormat("Model built in %.3f seconds.", timer.Get());
 
   ResetBestObjectiveBound();
 
@@ -352,8 +360,8 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
     message_handler.setLogLevel(3, 0);  // Cgl messages
   } else {
     message_handler.setLogLevel(0, 1);  // Coin messages
-    message_handler.setLogLevel(1, 0);  // Clp messages
-    message_handler.setLogLevel(2, 0);  // Presolve messages
+    message_handler.setLogLevel(1, 1);  // Clp messages
+    message_handler.setLogLevel(2, 1);  // Presolve messages
     message_handler.setLogLevel(3, 1);  // Cgl messages
   }
 
@@ -377,12 +385,15 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
   // through callCbc.
   model.setAllowableFractionGap(relative_mip_gap_);
   // NOTE: Trailing space is required to avoid buffer overflow in cbc.
-  int return_status = callCbc("-solve ", model);
+  int return_status =
+      num_threads_ == 1
+          ? callCbc("-solve ", model)
+          : callCbc(absl::StrCat("-threads ", num_threads_, " -solve "), model);
   const int kBadReturnStatus = 777;
   CHECK_NE(kBadReturnStatus, return_status);  // Should never happen according
                                               // to the CBC source
 
-  VLOG(1) << StringPrintf("Solved in %.3f seconds.", timer.Get());
+  VLOG(1) << absl::StrFormat("Solved in %.3f seconds.", timer.Get());
 
   // Check the status: optimal, infeasible, etc.
   int tmp_status = model.status();
@@ -410,9 +421,10 @@ MPSolver::ResultStatus CBCInterface::Solve(const MPSolverParameters& param) {
         result_status_ = MPSolver::UNBOUNDED;
       } else if (model.isProvenInfeasible()) {
         result_status_ = MPSolver::INFEASIBLE;
+      } else if (model.isAbandoned()) {
+        result_status_ = MPSolver::ABNORMAL;
       } else {
-        LOG(FATAL) << "Unknown solver status! Secondary status: "
-                   << model.secondaryStatus();
+        result_status_ = MPSolver::ABNORMAL;
       }
       break;
     case 1:
@@ -515,7 +527,9 @@ void CBCInterface::SetPresolveMode(int value) {
       // CBC presolve is always on.
       break;
     }
-    default: { SetUnsupportedIntegerParam(MPSolverParameters::PRESOLVE); }
+    default: {
+      SetUnsupportedIntegerParam(MPSolverParameters::PRESOLVE);
+    }
   }
 }
 

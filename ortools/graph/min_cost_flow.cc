@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,9 +17,9 @@
 #include <cmath>
 #include <limits>
 
+#include "absl/strings/str_format.h"
 #include "ortools/base/commandlineflags.h"
 #include "ortools/base/mathutil.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/graph/graph.h"
 #include "ortools/graph/graphs.h"
 #include "ortools/graph/max_flow.h"
@@ -177,11 +177,13 @@ bool GenericMinCostFlow<Graph, ArcFlowType,
           max_capacity + total_flow) {
         LOG(DFATAL) << "Input consistency error: max capacity + flow exceed "
                     << "precision";
+        return false;
       }
     }
   }
   if (total_supply != 0) {
     LOG(DFATAL) << "Input consistency error: unbalanced problem";
+    return false;
   }
   return true;
 }
@@ -210,6 +212,7 @@ bool GenericMinCostFlow<Graph, ArcFlowType, ArcScaledCostType>::CheckResult()
       }
       if (!ok) {
         LOG(DFATAL) << DebugString("CheckResult ", arc);
+        return false;
       }
     }
   }
@@ -273,12 +276,12 @@ GenericMinCostFlow<Graph, ArcFlowType, ArcScaledCostType>::DebugString(
                                  node_potential_[tail] - node_potential_[head];
   return absl::StrFormat(
       "%s Arc %d, from %d to %d, "
-      "Capacity = %lld, Residual capacity = %lld, "
-      "Flow = residual capacity for reverse arc = %lld, "
-      "Height(tail) = %lld, Height(head) = %lld, "
-      "Excess(tail) = %lld, Excess(head) = %lld, "
-      "Cost = %lld, Reduced cost = %lld, ",
-      context.c_str(), arc, tail, head, Capacity(arc),
+      "Capacity = %d, Residual capacity = %d, "
+      "Flow = residual capacity for reverse arc = %d, "
+      "Height(tail) = %d, Height(head) = %d, "
+      "Excess(tail) = %d, Excess(head) = %d, "
+      "Cost = %d, Reduced cost = %d, ",
+      context, arc, tail, head, Capacity(arc),
       static_cast<FlowQuantity>(residual_arc_capacity_[arc]), Flow(arc),
       node_potential_[tail], node_potential_[head], node_excess_[tail],
       node_excess_[head], static_cast<CostValue>(scaled_arc_unit_cost_[arc]),
@@ -412,7 +415,7 @@ template <typename Graph, typename ArcFlowType, typename ArcScaledCostType>
 CostValue GenericMinCostFlow<Graph, ArcFlowType, ArcScaledCostType>::UnitCost(
     ArcIndex arc) const {
   DCHECK(IsArcValid(arc));
-  DCHECK_EQ(1ULL, cost_scaling_factor_);
+  DCHECK_EQ(uint64{1}, cost_scaling_factor_);
   return scaled_arc_unit_cost_[arc];
 }
 
@@ -988,7 +991,20 @@ template class GenericMinCostFlow<::util::ReverseArcStaticGraph<uint16, int32>,
                                   /*ArcFlowType=*/int16,
                                   /*ArcScaledCostType=*/int32>;
 
-SimpleMinCostFlow::SimpleMinCostFlow() {}
+SimpleMinCostFlow::SimpleMinCostFlow(NodeIndex reserve_num_nodes,
+                                     ArcIndex reserve_num_arcs) {
+  if (reserve_num_nodes > 0) {
+    node_supply_.reserve(reserve_num_nodes);
+  }
+  if (reserve_num_arcs > 0) {
+    arc_tail_.reserve(reserve_num_arcs);
+    arc_head_.reserve(reserve_num_arcs);
+    arc_capacity_.reserve(reserve_num_arcs);
+    arc_cost_.reserve(reserve_num_arcs);
+    arc_permutation_.reserve(reserve_num_arcs);
+    arc_flow_.reserve(reserve_num_arcs);
+  }
+}
 
 void SimpleMinCostFlow::SetNodeSupply(NodeIndex node, FlowQuantity supply) {
   ResizeNodeVectors(node);
@@ -1089,7 +1105,7 @@ SimpleMinCostFlow::Status SimpleMinCostFlow::SolveWithPossibleAdjustment(
         case MaxFlowStatusClass::OPTIMAL:
           LOG(ERROR)
               << "Max flow failed but claimed to have an optimal solution";
-          FALLTHROUGH_INTENDED;
+          ABSL_FALLTHROUGH_INTENDED;
         default:
           return BAD_RESULT;
       }

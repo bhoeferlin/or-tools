@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,12 +12,13 @@
 // limitations under the License.
 
 #include "ortools/lp_data/lp_print_utils.h"
+
 #include <cmath>
 #include <cstdio>
 #include <limits>
 
+#include "absl/strings/str_cat.h"
 #include "ortools/base/integral_types.h"
-#include "ortools/base/join.h"
 #include "ortools/base/logging.h"
 #include "ortools/lp_data/lp_types.h"
 #include "ortools/util/rational_approximation.h"
@@ -25,7 +26,7 @@
 namespace operations_research {
 namespace glop {
 
-// Returns a std::string "num/den" representing the rational approximation of x.
+// Returns a string "num/den" representing the rational approximation of x.
 // The absolute difference between the output fraction and the input "x" will
 // not exceed "precision".
 std::string StringifyRational(const double x, const double precision) {
@@ -47,7 +48,7 @@ std::string Stringify(const Fractional x, bool fraction) {
                   : Stringify(x);
 }
 
-// Returns a std::string that pretty-prints a monomial ax with coefficient
+// Returns a string that pretty-prints a monomial ax with coefficient
 // a and variable name x
 std::string StringifyMonomial(const Fractional a, const std::string& x,
                               bool fraction) {

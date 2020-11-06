@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,7 +17,7 @@
 // Solves the Shortest Hamiltonian Path Problem using a complete algorithm.
 // The algorithm was first described in
 // M. Held, R.M. Karp, A dynamic programming approach to sequencing problems,
-// J. SIAM 10 (1962) 196–210
+// J. SIAM 10 (1962) 196-210
 //
 // The Shortest Hamiltonian Path Problem (SHPP) is similar to the Traveling
 // Salesperson Problem (TSP).
@@ -130,8 +130,8 @@ class Set {
   typedef Integer IntegerType;
 
   // Useful constants.
-  static const Integer One = static_cast<Integer>(1);
-  static const Integer Zero = static_cast<Integer>(0);
+  static constexpr Integer One = static_cast<Integer>(1);
+  static constexpr Integer Zero = static_cast<Integer>(0);
   static const int MaxCardinality = 8 * sizeof(Integer);  // NOLINT
 
   // Construct a set from an Integer.

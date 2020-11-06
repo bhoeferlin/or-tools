@@ -1,126 +1,91 @@
-if (NOT BUILD_CXX)
+if(NOT BUILD_CXX_EXAMPLES)
 	return()
 endif()
 
-project(ortools_examples)
-
-if (APPLE)
+if(APPLE)
 	set(CMAKE_INSTALL_RPATH
-		"@loader_path/../..;@loader_path/../lib;@loader_path")
-else()
-	set(CMAKE_INSTALL_RPATH "$ORIGIN/../../:$ORIGIN/../lib:$ORIGIN/")
+    "@loader_path/../${CMAKE_INSTALL_LIBDIR};@loader_path")
+elseif(UNIX)
+  set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}:$ORIGIN")
 endif()
-
-set(_SRCS
-	cvrptw_lib.cc
-	fap_model_printer.cc
-	fap_parser.cc
-	fap_utilities.cc
-	parse_dimacs_assignment.cc
-	)
-
-if(MSVC)
-	add_library(${PROJECT_NAME} STATIC ${_SRCS})
-else()
-	add_library(${PROJECT_NAME} SHARED ${_SRCS})
-endif()
-
-get_filename_component(PARENT_SOURCE_DIR ${PROJECT_SOURCE_DIR} DIRECTORY)
-get_filename_component(PARENT_SOURCE_DIR ${PARENT_SOURCE_DIR} DIRECTORY)
-target_include_directories(${PROJECT_NAME} PUBLIC ${PARENT_SOURCE_DIR})
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_11)
-target_link_libraries(${PROJECT_NAME} PUBLIC ortools::ortools)
 
 include(GNUInstallDirs)
-install(TARGETS ${PROJECT_NAME}
-	EXPORT ${PROJECT_NAME}Targets
-	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-	INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-	)
-
-foreach(EXECUTABLE
-		costas_array
-		cryptarithm
-		cvrp_disjoint_tw
-		cvrptw
-		cvrptw_with_breaks
-		cvrptw_with_refueling
-		cvrptw_with_resources
-		cvrptw_with_stop_times_and_resources
-		dimacs_assignment
-		dobble_ls
-		flow_api
-		frequency_assignment_problem
-		golomb
-		integer_programming
-		jobshop
-		jobshop_earlytardy
-		jobshop_ls
-		jobshop_sat
-		linear_assignment_api
-		linear_programming
-		linear_solver_protocol_buffers
-		ls_api
-		magic_square
-		model_util
-		mps_driver
-		multidim_knapsack
-		network_routing
-		nqueens
-		pdptw
-		rcpsp_sat
-		shift_minimization_sat
-		solve
-		sports_scheduling
-		strawberry_fields_with_column_generation
-		tsp
-		weighted_tardiness_sat)
-	add_executable(${EXECUTABLE} ${EXECUTABLE}.cc)
-	target_link_libraries(${EXECUTABLE} ${PROJECT_NAME})
-	install(TARGETS ${EXECUTABLE}
-		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+foreach(EXECUTABLE IN ITEMS
+  constraint_programming_cp
+  costas_array_sat
+  cvrp_disjoint_tw
+  cvrptw
+  cvrptw_with_breaks
+  cvrptw_with_refueling
+  cvrptw_with_resources
+  cvrptw_with_stop_times_and_resources
+  dimacs_assignment
+  dobble_ls
+  flow_api
+  frequency_assignment_problem
+  golomb_sat
+  integer_programming
+  jobshop_sat
+  linear_assignment_api
+  linear_programming
+  linear_solver_protocol_buffers
+  magic_square_sat
+  max_flow
+  min_cost_flow
+  mps_driver
+  network_routing_sat
+  nqueens
+  pdptw
+  random_tsp
+  shift_minimization_sat
+  slitherlink_sat
+  solve
+  sports_scheduling_sat
+  stigler_diet
+  strawberry_fields_with_column_generation
+  uncapacitated_facility_location
+  variable_intervals_sat
+  weighted_tardiness_sat)
+  add_executable(${EXECUTABLE} ${EXECUTABLE}.cc)
+  target_include_directories(${EXECUTABLE} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_features(${EXECUTABLE} PRIVATE cxx_std_17)
+  target_link_libraries(${EXECUTABLE} PRIVATE ortools::ortools)
+  install(TARGETS ${EXECUTABLE})
 endforeach()
 
-
-foreach(TEST
-		costas_array
-		cryptarithm
-		cvrp_disjoint_tw
-		cvrptw
-		#cvrptw_with_breaks # Too long
-		#cvrptw_with_refueling # Too long
-		cvrptw_with_resources
-		cvrptw_with_stop_times_and_resources
-		#dimacs_assignment
-		#dobble_ls # Too long
-		flow_api
-		#frequency_assignment_problem
-		golomb
-		integer_programming
-		#jobshop
-		#jobshop_earlytardy
-		#jobshop_ls
-		#jobshop_sat
-		linear_assignment_api
-		linear_programming
-		linear_solver_protocol_buffers
-		ls_api
-		magic_square
-		#model_util
-		mps_driver
-		#multidim_knapsack
-		#network_routing
-		nqueens
-		#pdptw
-		#rcpsp_sat
-		#shift_minimization_sat
-		#solve
-		#sports_scheduling # Too long
-		#strawberry_fields_with_column_generation # Too long
-		tsp
-		#weighted_tardiness_sat
-		)
-	add_test(NAME cc_${TEST} COMMAND ${TEST})
+foreach(TEST IN ITEMS
+    costas_array_sat
+    cvrp_disjoint_tw
+    cvrptw
+    #cvrptw_with_breaks # Too long
+    #cvrptw_with_refueling # Too long
+    cvrptw_with_resources
+    cvrptw_with_stop_times_and_resources
+    #dimacs_assignment
+    #dobble_ls # Too long
+    flow_api
+    #frequency_assignment_problem
+    golomb_sat
+    integer_programming
+    #jobshop_sat
+    knapsack
+    linear_assignment_api
+    linear_programming
+    linear_solver_protocol_buffers
+    magic_square_sat
+    #mps_driver
+    #network_routing_sat
+    nqueens
+    #pdptw
+    #rcpsp_sat
+    #shift_minimization_sat
+    #solve
+    #sports_scheduling_sat # Too long
+    #stigler_diet
+    #strawberry_fields_with_column_generation # Too long
+    uncapacitated_facility_location
+    #variable_intervals_sat
+    #weighted_tardiness_sat
+    )
+  add_test(NAME cxx_${TEST} COMMAND ${TEST})
 endforeach()

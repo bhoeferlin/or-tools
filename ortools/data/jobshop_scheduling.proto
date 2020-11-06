@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -38,11 +38,13 @@
 //    the weighted makespan.
 
 syntax = "proto3";
+
 option java_package = "com.google.ortools.data.jssp";
 option java_multiple_files = true;
 option csharp_namespace = "Google.OrTools.Data.Jssp";
 
 package operations_research.data.jssp;
+
 import "google/protobuf/wrappers.proto";
 
 // This message specifies a task inside a job.
@@ -120,7 +122,6 @@ message JobPrecedence {
   int32 second_job_index = 2;
   int64 min_delay = 3;
 }
-
 
 // The input of a problem.
 message JsspInputProblem {

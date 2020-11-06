@@ -13,10 +13,10 @@
 
 #include "ortools/base/hash.h"
 #include "ortools/base/map_util.h"
-#include "ortools/base/stl_util.h"
 #include "ortools/base/random.h"
-#include "ortools/constraint_solver/constraint_solveri.h"
+#include "ortools/base/stl_util.h"
 #include "ortools/constraint_solver/constraint_solver.h"
+#include "ortools/constraint_solver/constraint_solveri.h"
 #include "ortools/util/string_array.h"
 
 namespace operations_research {
@@ -138,7 +138,8 @@ class MinArrayCtTest {
     SetUp();
     std::vector<IntVar*> vars;
     for (int i = 0; i < 1001; ++i) {
-      vars.push_back(solver_->MakeIntVar(i, 3000 - i, StringPrintf("x%d", i)));
+      vars.push_back(
+          solver_->MakeIntVar(i, 3000 - i, absl::StrFormat("x%d", i)));
     }
     IntExpr* expr = solver_->MakeMin(vars);
     CHECK_EQ(2000, expr->Max());
@@ -150,7 +151,8 @@ class MinArrayCtTest {
     std::vector<IntVar*> vars;
     vars.reserve(1001);
     for (int i = 0; i < 1001; ++i) {
-      vars.push_back(solver_->MakeIntVar(i, 3000 - i, StringPrintf("x%d", i)));
+      vars.push_back(
+          solver_->MakeIntVar(i, 3000 - i, absl::StrFormat("x%d", i)));
     }
     IntExpr* expr = solver_->MakeMin(vars);
     CHECK_EQ(2000, expr->Max());
@@ -184,15 +186,15 @@ class MinArrayCtTest {
     IntExpr* expr = solver_->MakeMin(vars);
     CHECK_EQ(kint64max, expr->Min());
     CHECK_EQ(kint64max, expr->Max());
-    vars.push_back(solver_->MakeIntVar(1, 10, StringPrintf("x%d", 0)));
+    vars.push_back(solver_->MakeIntVar(1, 10, absl::StrFormat("x%d", 0)));
     expr = solver_->MakeMin(vars);
     CHECK_EQ(1, expr->Min());
     CHECK_EQ(10, expr->Max());
-    vars.push_back(solver_->MakeIntVar(1, 9, StringPrintf("x%d", 1)));
+    vars.push_back(solver_->MakeIntVar(1, 9, absl::StrFormat("x%d", 1)));
     expr = solver_->MakeMin(vars);
     CHECK_EQ(1, expr->Min());
     CHECK_EQ(9, expr->Max());
-    vars.push_back(solver_->MakeIntVar(1, 8, StringPrintf("x%d", 2)));
+    vars.push_back(solver_->MakeIntVar(1, 8, absl::StrFormat("x%d", 2)));
     expr = solver_->MakeMin(vars);
     CHECK_EQ(1, expr->Min());
     CHECK_EQ(8, expr->Max());
@@ -312,7 +314,8 @@ class MaxArrayCtTest {
     std::vector<IntVar*> vars;
     vars.reserve(1001);
     for (int i = 0; i < 1001; ++i) {
-      vars.push_back(solver_->MakeIntVar(i, 3000 - i, StringPrintf("x%d", i)));
+      vars.push_back(
+          solver_->MakeIntVar(i, 3000 - i, absl::StrFormat("x%d", i)));
     }
     IntExpr* expr = solver_->MakeMax(vars);
     CHECK_EQ(3000, expr->Max());
@@ -323,7 +326,8 @@ class MaxArrayCtTest {
     SetUp();
     std::vector<IntVar*> vars;
     for (int i = 0; i < 1001; ++i) {
-      vars.push_back(solver_->MakeIntVar(i, 3000 - i, StringPrintf("x%d", i)));
+      vars.push_back(
+          solver_->MakeIntVar(i, 3000 - i, absl::StrFormat("x%d", i)));
     }
     IntExpr* expr = solver_->MakeMax(vars);
     CHECK_EQ(3000, expr->Max());
@@ -356,15 +360,15 @@ class MaxArrayCtTest {
     IntExpr* expr = solver_->MakeMax(vars);
     CHECK_EQ(kint64min, expr->Min());
     CHECK_EQ(kint64min, expr->Max());
-    vars.push_back(solver_->MakeIntVar(1, 10, StringPrintf("x%d", 0)));
+    vars.push_back(solver_->MakeIntVar(1, 10, absl::StrFormat("x%d", 0)));
     expr = solver_->MakeMax(vars);
     CHECK_EQ(1, expr->Min());
     CHECK_EQ(10, expr->Max());
-    vars.push_back(solver_->MakeIntVar(2, 10, StringPrintf("x%d", 1)));
+    vars.push_back(solver_->MakeIntVar(2, 10, absl::StrFormat("x%d", 1)));
     expr = solver_->MakeMax(vars);
     CHECK_EQ(2, expr->Min());
     CHECK_EQ(10, expr->Max());
-    vars.push_back(solver_->MakeIntVar(3, 10, StringPrintf("x%d", 2)));
+    vars.push_back(solver_->MakeIntVar(3, 10, absl::StrFormat("x%d", 2)));
     expr = solver_->MakeMax(vars);
     CHECK_EQ(3, expr->Min());
     CHECK_EQ(10, expr->Max());
@@ -400,5 +404,3 @@ int main(int argc, char** argv) {
 
   return 0;
 }
-
-

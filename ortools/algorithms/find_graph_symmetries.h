@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -27,10 +27,10 @@
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/time/time.h"
 #include "ortools/algorithms/dynamic_partition.h"
 #include "ortools/algorithms/dynamic_permutation.h"
-#include "ortools/base/status.h"
-#include "ortools/base/time_support.h"
 #include "ortools/graph/graph.h"
 #include "ortools/graph/iterators.h"
 #include "ortools/util/stats.h"
@@ -100,7 +100,7 @@ class GraphSymmetryFinder {
   // - "factorized_automorphism_group_size" will also be incomplete, and
   //   partially valid: its last element may be undervalued. But all prior
   //   elements are valid factors of the automorphism group size.
-  util::Status FindSymmetries(
+  absl::Status FindSymmetries(
       double time_limit_seconds, std::vector<int>* node_equivalence_classes_io,
       std::vector<std::unique_ptr<SparsePermutation> >* generators,
       std::vector<int>* factorized_automorphism_group_size);

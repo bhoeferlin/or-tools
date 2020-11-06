@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,6 +17,7 @@
 #include <functional>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "ortools/base/int_type.h"
 #include "ortools/base/int_type_indexed_vector.h"
 #include "ortools/base/integral_types.h"
@@ -91,6 +92,15 @@ class IntervalsRepository {
     return integer_trail_->UpperBound(size_var);
   }
 
+  // Utility function that returns a vector will all intervals.
+  std::vector<IntervalVariable> AllIntervals() const {
+    std::vector<IntervalVariable> result;
+    for (IntervalVariable i(0); i < NumIntervals(); ++i) {
+      result.push_back(i);
+    }
+    return result;
+  }
+
  private:
   // External classes needed.
   IntegerTrail* integer_trail_;
@@ -109,6 +119,16 @@ class IntervalsRepository {
   DISALLOW_COPY_AND_ASSIGN(IntervalsRepository);
 };
 
+// An helper struct to sort task by time. This is used by the
+// SchedulingConstraintHelper but also by many scheduling propagators to sort
+// tasks.
+struct TaskTime {
+  int task_index;
+  IntegerValue time;
+  bool operator<(TaskTime other) const { return time < other.time; }
+  bool operator>(TaskTime other) const { return time > other.time; }
+};
+
 // Helper class shared by the propagators that manage a given list of tasks.
 //
 // One of the main advantage of this class is that it allows to share the
@@ -121,6 +141,18 @@ class SchedulingConstraintHelper {
   SchedulingConstraintHelper(const std::vector<IntervalVariable>& tasks,
                              Model* model);
 
+  // Temporary constructor.
+  // The class will not be usable until ResetFromSubset() is called.
+  //
+  // TODO(user): Remove this. It is a hack because the disjunctive class needs
+  // to fetch the maximum possible number of task at construction.
+  SchedulingConstraintHelper(int num_tasks, Model* model);
+
+  // Resets the class to the same state as if it was constructed with
+  // the given subset of tasks from other.
+  void ResetFromSubset(const SchedulingConstraintHelper& other,
+                       absl::Span<const int> tasks);
+
   // Returns the number of task.
   int NumTasks() const { return start_vars_.size(); }
 
@@ -129,21 +161,38 @@ class SchedulingConstraintHelper {
   void SetTimeDirection(bool is_forward);
 
   // Helpers for the current bounds on the current task time window.
-  //      [(duration-min)       ...      (duration-min)]
+  //      [  (size-min)         ...        (size-min)  ]
   //      ^             ^                ^             ^
   //   start-min     end-min          start-max     end-max
   //
-  // Note that for tasks with variable durations, we don't necessarily have
-  // duration-min between the the XXX-min and XXX-max value.
-  IntegerValue DurationMin(int t) const;
-  IntegerValue DurationMax(int t) const;
+  // Note that for tasks with variable sizes, we don't necessarily have
+  // size-min between the XXX-min and XXX-max value.
+  IntegerValue SizeMin(int t) const;
+  IntegerValue SizeMax(int t) const;
   IntegerValue StartMin(int t) const;
   IntegerValue StartMax(int t) const;
   IntegerValue EndMin(int t) const;
   IntegerValue EndMax(int t) const;
 
+  // In the presence of tasks with a variable size, we do not necessarily
+  // have start_min + size_min = end_min, we can instead have a situation
+  // like:
+  //         |          |<--- size-min --->|
+  //         ^          ^                  ^
+  //        start-min   |                end-min
+  //                    |
+  // We define the "shifted start min" to be the right most time such that
+  // we known that we must have min-size "energy" to the right of it if the
+  // task is present. Using it in our scheduling propagators allows to propagate
+  // more in the presence of tasks with variable size (or optional task
+  // where we also do not necessarily have start_min + size_min = end_min.
+  //
+  // To explain this shifted start min, one must use the AddEnergyAfterReason().
+  IntegerValue ShiftedStartMin(int t) const;
+
   bool StartIsFixed(int t) const;
   bool EndIsFixed(int t) const;
+  bool SizeIsFixed(int t) const;
 
   // Returns true if the corresponding fact is known for sure. A normal task is
   // always present. For optional task for which the presence is still unknown,
@@ -152,32 +201,36 @@ class SchedulingConstraintHelper {
   bool IsPresent(int t) const;
   bool IsAbsent(int t) const;
 
+  // Returns a string with the current task bounds.
+  std::string TaskDebugString(int t) const;
+
   // Sorts and returns the tasks in corresponding order at the time of the call.
   // Note that we do not mean strictly-increasing/strictly-decreasing, there
   // will be duplicate time values in these vectors.
   //
   // TODO(user): we could merge the first loop of IncrementalSort() with the
   // loop that fill TaskTime.time at each call.
-  struct TaskTime {
-    int task_index;
-    IntegerValue time;
-    bool operator<(TaskTime other) const { return time < other.time; }
-    bool operator>(TaskTime other) const { return time > other.time; }
-  };
   const std::vector<TaskTime>& TaskByIncreasingStartMin();
   const std::vector<TaskTime>& TaskByIncreasingEndMin();
   const std::vector<TaskTime>& TaskByDecreasingStartMax();
   const std::vector<TaskTime>& TaskByDecreasingEndMax();
+  const std::vector<TaskTime>& TaskByIncreasingShiftedStartMin();
 
   // Functions to clear and then set the current reason.
   void ClearReason();
   void AddPresenceReason(int t);
-  void AddDurationMinReason(int t);
-  void AddDurationMinReason(int t, IntegerValue lower_bound);
+  void AddAbsenceReason(int t);
+  void AddSizeMinReason(int t);
+  void AddSizeMinReason(int t, IntegerValue lower_bound);
   void AddStartMinReason(int t, IntegerValue lower_bound);
   void AddStartMaxReason(int t, IntegerValue upper_bound);
   void AddEndMinReason(int t, IntegerValue lower_bound);
   void AddEndMaxReason(int t, IntegerValue upper_bound);
+  void AddEnergyAfterReason(int t, IntegerValue energy_min, IntegerValue time);
+
+  // Adds the reason why task "before" must be before task "after".
+  // That is StartMax(before) < EndMin(after).
+  void AddReasonForBeingBefore(int before, int after);
 
   // It is also possible to directly manipulates the underlying reason vectors
   // that will be used when pushing something.
@@ -195,38 +248,80 @@ class SchedulingConstraintHelper {
   // conditionned on its presence. The functions will do the correct thing
   // depending on whether or not the start_min/end_max are optional variables
   // whose presence implies the interval presence.
-  bool IncreaseStartMin(int t, IntegerValue new_min_start);
-  bool DecreaseEndMax(int t, IntegerValue new_max_end);
-  void PushTaskAbsence(int t);
-  bool PushIntegerLiteral(IntegerLiteral bound);
-  bool ReportConflict();
+  ABSL_MUST_USE_RESULT bool IncreaseStartMin(int t, IntegerValue new_min_start);
+  ABSL_MUST_USE_RESULT bool DecreaseEndMax(int t, IntegerValue new_max_end);
+  ABSL_MUST_USE_RESULT bool PushTaskAbsence(int t);
+  ABSL_MUST_USE_RESULT bool PushTaskPresence(int t);
+  ABSL_MUST_USE_RESULT bool PushIntegerLiteral(IntegerLiteral lit);
+  ABSL_MUST_USE_RESULT bool ReportConflict();
+  ABSL_MUST_USE_RESULT bool PushIntegerLiteralIfTaskPresent(int t,
+                                                            IntegerLiteral lit);
 
   // Returns the underlying integer variables.
   const std::vector<IntegerVariable>& StartVars() const { return start_vars_; }
   const std::vector<IntegerVariable>& EndVars() const { return end_vars_; }
+  const std::vector<IntegerVariable>& SizeVars() const { return size_vars_; }
+  IntegerVariable SizeVar(int index) const { return size_vars_[index]; }
+  Literal PresenceLiteral(int index) const {
+    DCHECK(IsOptional(index));
+    return Literal(reason_for_presence_[index]);
+  }
 
   // Registers the given propagator id to be called if any of the tasks
-  // in this class change.
-  void WatchAllTasks(int id, GenericLiteralWatcher* watcher) const;
+  // in this class change. Note that we do not watch size max though.
+  void WatchAllTasks(int id, GenericLiteralWatcher* watcher,
+                     bool watch_start_max = true,
+                     bool watch_end_max = true) const;
+
+  // Manages the other helper (used by the diffn constraint).
+  //
+  // For each interval appearing in a reason on this helper, another reason
+  // will be added. This other reason specifies that on the other helper, the
+  // corresponding interval overlaps 'event'.
+  void SetOtherHelper(SchedulingConstraintHelper* other_helper,
+                      IntegerValue event) {
+    CHECK(other_helper != nullptr);
+    other_helper_ = other_helper;
+    event_for_other_helper_ = event;
+  }
+
+  void ClearOtherHelper() { other_helper_ = nullptr; }
+
+  // Adds to this helper reason all the explanation of the other helper.
+  // This checks that other_helper_ is null.
+  //
+  // This is used in the 2D energetic reasoning in the diffn constraint.
+  void ImportOtherReasons(const SchedulingConstraintHelper& other_helper);
 
  private:
+  void InitSortedVectors();
+
   // Internal function for IncreaseStartMin()/DecreaseEndMax().
   bool PushIntervalBound(int t, IntegerLiteral lit);
+
+  // This will be called on any interval that is part of a reason or
+  // a bound push. Since the last call to ClearReason(), for each unique
+  // t, we will add once to other_helper_ the reason for t containing
+  // the point event_for_other_helper_.
+  void AddOtherReason(int t);
+
+  // Import the reasons on the other helper into this helper.
+  void ImportOtherReasons();
 
   Trail* trail_;
   IntegerTrail* integer_trail_;
   PrecedencesPropagator* precedences_;
 
+  // The current direction of time, true for forward, false for backward.
+  bool current_time_direction_ = true;
+
   // All the underlying variables of the tasks.
   // The vectors are indexed by the task index t.
   std::vector<IntegerVariable> start_vars_;
   std::vector<IntegerVariable> end_vars_;
-  std::vector<IntegerVariable> duration_vars_;
-  std::vector<IntegerValue> fixed_durations_;
+  std::vector<IntegerVariable> size_vars_;
+  std::vector<IntegerValue> fixed_sizes_;
   std::vector<LiteralIndex> reason_for_presence_;
-
-  // The current direction of time, true for forward, false for backward.
-  bool current_time_direction_;
 
   // The negation of the start/end variable so that SetTimeDirection()
   // can do its job in O(1) instead of calling NegationOf() on each entry.
@@ -234,30 +329,46 @@ class SchedulingConstraintHelper {
   std::vector<IntegerVariable> minus_end_vars_;
 
   // Sorted vectors returned by the TasksBy*() functions.
-  std::vector<TaskTime> task_by_increasing_min_start_;
-  std::vector<TaskTime> task_by_increasing_min_end_;
-  std::vector<TaskTime> task_by_decreasing_max_start_;
-  std::vector<TaskTime> task_by_decreasing_max_end_;
+  std::vector<TaskTime> task_by_increasing_start_min_;
+  std::vector<TaskTime> task_by_increasing_end_min_;
+  std::vector<TaskTime> task_by_decreasing_start_max_;
+  std::vector<TaskTime> task_by_decreasing_end_max_;
+
+  std::vector<TaskTime> task_by_increasing_shifted_start_min_;
+  std::vector<TaskTime> task_by_negated_shifted_end_max_;
+  int64 shifted_start_min_timestamp_ = -1;
+  int64 negated_shifted_end_max_timestamp_ = -1;
 
   // Reason vectors.
   std::vector<Literal> literal_reason_;
   std::vector<IntegerLiteral> integer_reason_;
+
+  // Optional 'slave' helper used in the diffn constraint.
+  SchedulingConstraintHelper* other_helper_ = nullptr;
+  IntegerValue event_for_other_helper_;
+  std::vector<bool> already_added_to_other_reasons_;
 };
 
 // =============================================================================
 // SchedulingConstraintHelper inlined functions.
 // =============================================================================
 
-inline IntegerValue SchedulingConstraintHelper::DurationMin(int t) const {
-  return duration_vars_[t] == kNoIntegerVariable
-             ? fixed_durations_[t]
-             : integer_trail_->LowerBound(duration_vars_[t]);
+inline IntegerValue SchedulingConstraintHelper::SizeMin(int t) const {
+  return size_vars_[t] == kNoIntegerVariable
+             ? fixed_sizes_[t]
+             : integer_trail_->LowerBound(size_vars_[t]);
 }
 
-inline IntegerValue SchedulingConstraintHelper::DurationMax(int t) const {
-  return duration_vars_[t] == kNoIntegerVariable
-             ? fixed_durations_[t]
-             : integer_trail_->UpperBound(duration_vars_[t]);
+inline IntegerValue SchedulingConstraintHelper::SizeMax(int t) const {
+  return size_vars_[t] == kNoIntegerVariable
+             ? fixed_sizes_[t]
+             : integer_trail_->UpperBound(size_vars_[t]);
+}
+
+inline bool SchedulingConstraintHelper::SizeIsFixed(int t) const {
+  return size_vars_[t] == kNoIntegerVariable
+             ? true
+             : integer_trail_->IsFixed(size_vars_[t]);
 }
 
 inline IntegerValue SchedulingConstraintHelper::StartMin(int t) const {
@@ -274,6 +385,11 @@ inline IntegerValue SchedulingConstraintHelper::EndMin(int t) const {
 
 inline IntegerValue SchedulingConstraintHelper::EndMax(int t) const {
   return integer_trail_->UpperBound(end_vars_[t]);
+}
+
+// for optional interval, we don't necessarily have start + size = end.
+inline IntegerValue SchedulingConstraintHelper::ShiftedStartMin(int t) const {
+  return std::max(StartMin(t), EndMin(t) - SizeMin(t));
 }
 
 inline bool SchedulingConstraintHelper::StartIsFixed(int t) const {
@@ -301,51 +417,104 @@ inline bool SchedulingConstraintHelper::IsAbsent(int t) const {
 inline void SchedulingConstraintHelper::ClearReason() {
   integer_reason_.clear();
   literal_reason_.clear();
+  if (other_helper_) {
+    other_helper_->ClearReason();
+    already_added_to_other_reasons_.assign(NumTasks(), false);
+  }
 }
 
 inline void SchedulingConstraintHelper::AddPresenceReason(int t) {
+  DCHECK(IsPresent(t));
+  AddOtherReason(t);
   if (reason_for_presence_[t] != kNoLiteralIndex) {
     literal_reason_.push_back(Literal(reason_for_presence_[t]).Negated());
   }
 }
 
-inline void SchedulingConstraintHelper::AddDurationMinReason(int t) {
-  if (duration_vars_[t] != kNoIntegerVariable) {
-    integer_reason_.push_back(
-        integer_trail_->LowerBoundAsLiteral(duration_vars_[t]));
+inline void SchedulingConstraintHelper::AddAbsenceReason(int t) {
+  DCHECK(IsAbsent(t));
+  AddOtherReason(t);
+  if (reason_for_presence_[t] != kNoLiteralIndex) {
+    literal_reason_.push_back(Literal(reason_for_presence_[t]));
   }
 }
 
-inline void SchedulingConstraintHelper::AddDurationMinReason(
-    int t, IntegerValue lower_bound) {
-  if (duration_vars_[t] != kNoIntegerVariable) {
+inline void SchedulingConstraintHelper::AddSizeMinReason(int t) {
+  AddOtherReason(t);
+  if (size_vars_[t] != kNoIntegerVariable) {
     integer_reason_.push_back(
-        IntegerLiteral::GreaterOrEqual(duration_vars_[t], lower_bound));
+        integer_trail_->LowerBoundAsLiteral(size_vars_[t]));
+  }
+}
+
+inline void SchedulingConstraintHelper::AddSizeMinReason(
+    int t, IntegerValue lower_bound) {
+  AddOtherReason(t);
+  if (size_vars_[t] != kNoIntegerVariable) {
+    DCHECK_GE(SizeMin(t), lower_bound);
+    integer_reason_.push_back(
+        IntegerLiteral::GreaterOrEqual(size_vars_[t], lower_bound));
   }
 }
 
 inline void SchedulingConstraintHelper::AddStartMinReason(
     int t, IntegerValue lower_bound) {
+  DCHECK_GE(StartMin(t), lower_bound);
+  AddOtherReason(t);
   integer_reason_.push_back(
       IntegerLiteral::GreaterOrEqual(start_vars_[t], lower_bound));
 }
 
 inline void SchedulingConstraintHelper::AddStartMaxReason(
     int t, IntegerValue upper_bound) {
+  DCHECK_LE(StartMax(t), upper_bound);
+  AddOtherReason(t);
   integer_reason_.push_back(
       IntegerLiteral::LowerOrEqual(start_vars_[t], upper_bound));
 }
 
 inline void SchedulingConstraintHelper::AddEndMinReason(
     int t, IntegerValue lower_bound) {
+  AddOtherReason(t);
+  if (EndMin(t) < lower_bound) {
+    // This might happen if we used for the end_min the max between end_min
+    // and start_min + size_min. That is, the end_min assuming the task is
+    // present.
+    const IntegerValue size_min = SizeMin(t);
+    if (size_vars_[t] != kNoIntegerVariable) {
+      integer_reason_.push_back(
+          IntegerLiteral::GreaterOrEqual(size_vars_[t], size_min));
+    }
+    integer_reason_.push_back(
+        IntegerLiteral::GreaterOrEqual(start_vars_[t], lower_bound - size_min));
+    return;
+  }
   integer_reason_.push_back(
       IntegerLiteral::GreaterOrEqual(end_vars_[t], lower_bound));
 }
 
 inline void SchedulingConstraintHelper::AddEndMaxReason(
     int t, IntegerValue upper_bound) {
+  DCHECK_LE(EndMax(t), upper_bound);
+  AddOtherReason(t);
   integer_reason_.push_back(
       IntegerLiteral::LowerOrEqual(end_vars_[t], upper_bound));
+}
+
+inline void SchedulingConstraintHelper::AddEnergyAfterReason(
+    int t, IntegerValue energy_min, IntegerValue time) {
+  AddOtherReason(t);
+  if (StartMin(t) >= time) {
+    integer_reason_.push_back(
+        IntegerLiteral::GreaterOrEqual(start_vars_[t], time));
+  } else {
+    integer_reason_.push_back(
+        IntegerLiteral::GreaterOrEqual(end_vars_[t], time + energy_min));
+  }
+  if (size_vars_[t] != kNoIntegerVariable) {
+    integer_reason_.push_back(
+        IntegerLiteral::GreaterOrEqual(size_vars_[t], energy_min));
+  }
 }
 
 // =============================================================================
@@ -483,7 +652,7 @@ inline std::function<void(Model*)> IntervalWithAlternatives(
     IntervalsRepository* intervals = model->GetOrCreate<IntervalsRepository>();
 
     std::vector<Literal> presences;
-    std::vector<IntegerValue> durations;
+    std::vector<IntegerValue> sizes;
 
     // Create an "exactly one executed" constraint on the alternatives.
     std::vector<LiteralWithCoeff> sat_ct;
@@ -500,10 +669,10 @@ inline std::function<void(Model*)> IntervalWithAlternatives(
       // Generalize to an "int_var_element" constraint.
       CHECK_EQ(intervals->SizeVar(member), kNoIntegerVariable);
       presences.push_back(is_present);
-      durations.push_back(intervals->MinSize(member));
+      sizes.push_back(intervals->MinSize(member));
     }
     if (intervals->SizeVar(master) != kNoIntegerVariable) {
-      model->Add(IsOneOf(intervals->SizeVar(master), presences, durations));
+      model->Add(IsOneOf(intervals->SizeVar(master), presences, sizes));
     }
     model->Add(BooleanLinearConstraint(1, 1, &sat_ct));
 

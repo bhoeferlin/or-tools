@@ -1,35 +1,46 @@
-FROM ubuntu:18.04
+FROM ubuntu:18.04 AS env
 
 #############
 ##  SETUP  ##
 #############
-RUN apt update \
-&& apt install -y -q \
- git pkg-config wget make cmake autoconf libtool zlib1g-dev gawk g++ curl subversion \
- swig lsb-release \
- python-dev python-wheel python-setuptools python-six \
- python3-dev python3-wheel python3-setuptools \
- default-jdk \
+RUN apt update -qq \
+&& apt install -yq \
+ git pkg-config wget make autoconf libtool zlib1g-dev gawk g++ curl subversion \
+ lsb-release \
 && apt clean \
 && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install CMake 3.18.1
+RUN wget "https://cmake.org/files/v3.18/cmake-3.18.1-Linux-x86_64.sh" \
+&& chmod a+x cmake-3.18.1-Linux-x86_64.sh \
+&& ./cmake-3.18.1-Linux-x86_64.sh --prefix=/usr/local/ --skip-license \
+&& rm cmake-3.18.1-Linux-x86_64.sh
+
+# Swig Install
+RUN apt-get update -qq \
+&& apt-get install -yq swig \
+&& apt-get clean \
+&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Java install (openjdk-11)
+RUN apt-get update -qq \
+&& apt-get install -yq default-jdk maven \
+&& apt-get clean \
+&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+ENV JAVA_HOME=/usr/lib/jvm/default-java
 
 # Dotnet Install
+# see https://docs.microsoft.com/en-us/dotnet/core/install/linux-package-manager-ubuntu-1804
 RUN apt-get update -qq \
-&& apt-get install -y -q gpg apt-transport-https \
-&& wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.asc.gpg \
-&& mv microsoft.asc.gpg /etc/apt/trusted.gpg.d/ \
-&& wget -q https://packages.microsoft.com/config/ubuntu/18.04/prod.list \
-&& mv prod.list /etc/apt/sources.list.d/microsoft-prod.list \
+&& apt-get install -yq apt-transport-https \
+&& wget -q https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb \
+&& dpkg -i packages-microsoft-prod.deb \
 && apt-get update -qq \
-&& apt-get install -y -q dotnet-sdk-2.1 \
-&& apt clean \
+&& apt-get install -yq dotnet-sdk-3.1 \
+&& apt-get clean \
 && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-## Mono Install
-#RUN apt-get update \
-#&& apt-get install -qq mono-complete \
-#&& apt-get clean \
-#&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Trigger first run experience by running arbitrary cmd
+RUN dotnet --info
 
 ENV TZ=America/Los_Angeles
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -37,6 +48,11 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 ################
 ##  OR-TOOLS  ##
 ################
+FROM env AS devel
+# Copy the snk key
+COPY or-tools.snk /root/or-tools.snk
+ENV DOTNET_SNK=/root/or-tools.snk
+
 ARG SRC_GIT_BRANCH
 ENV SRC_GIT_BRANCH ${SRC_GIT_BRANCH:-master}
 ARG SRC_GIT_SHA1
@@ -50,10 +66,13 @@ RUN git clone -b "${SRC_GIT_BRANCH}" --single-branch https://github.com/google/o
 && echo "sha1: $(cd or-tools && git rev-parse --verify HEAD)" \
 && echo "expected sha1: ${SRC_GIT_SHA1}"
 
-# Prebuild
+# Build third parties
+FROM devel AS third_party
 WORKDIR /root/or-tools
 RUN make detect && make third_party
+
+# Build project
+FROM third_party AS build
 RUN make detect_cc && make cc
-RUN make detect_python && make python
 RUN make detect_java && make java
 RUN make detect_dotnet && make dotnet

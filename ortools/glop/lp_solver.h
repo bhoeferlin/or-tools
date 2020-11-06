@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -34,6 +34,7 @@ class LPSolver {
   // See the proto for an extensive documentation.
   void SetParameters(const GlopParameters& parameters);
   const GlopParameters& GetParameters() const;
+  GlopParameters* GetMutableParameters();
 
   // Solves the given linear program and returns the solve status. See the
   // ProblemStatus documentation for a description of the different values.
@@ -49,12 +50,12 @@ class LPSolver {
   // it will just solve the problem from scratch. On the other hand, if the lp
   // is the same, calling Solve() again should basically resume the solve from
   // the last position. To disable this behavior, simply call Clear() before.
-  ProblemStatus Solve(const LinearProgram& lp) MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT ProblemStatus Solve(const LinearProgram& lp);
 
   // Same as Solve() but use the given time limit rather than constructing a new
   // one from the current GlopParameters.
-  ProblemStatus SolveWithTimeLimit(const LinearProgram& lp,
-                                   TimeLimit* time_limit) MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT ProblemStatus SolveWithTimeLimit(const LinearProgram& lp,
+                                                        TimeLimit* time_limit);
 
   // Puts the solver in a clean state.
   //
@@ -152,7 +153,7 @@ class LPSolver {
   // Resizes all the solution vectors to the given sizes.
   // This is used in case of error to make sure all the getter functions will
   // not crash when given row/col inside the initial linear program dimension.
-  void ResizeSolution(RowIndex row, ColIndex col);
+  void ResizeSolution(RowIndex num_rows, ColIndex num_cols);
 
   // Make sure the primal and dual values are within their bounds in order to
   // have a strong guarantee on the optimal solution. See

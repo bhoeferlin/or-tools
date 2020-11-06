@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,11 +16,10 @@
 
 #include <map>
 #include <string>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/graph/iterators.h"
 #include "ortools/util/string_array.h"
 
@@ -77,7 +76,7 @@ struct Domain {
 
   // Various inclusion tests on a domain.
   bool Contains(int64 value) const;
-  bool OverlapsIntList(const std::vector<int64>& values) const;
+  bool OverlapsIntList(const std::vector<int64>& vec) const;
   bool OverlapsIntInterval(int64 lb, int64 ub) const;
   bool OverlapsDomain(const Domain& other) const;
 
@@ -113,22 +112,16 @@ struct IntegerVariable {
   // The semantic of the merge is the following:
   //   - the resulting domain is the intersection of the two domains.
   //   - if one variable is not temporary, the result is not temporary.
-  //   - if one (and exactly one) variable is a target var, the result is a
-  //     target var.
   //   - if one variable is temporary, the name is the name of the other
   //     variable. If both variables are temporary or both variables are not
   //     temporary, the name is chosen arbitrarily between the two names.
   bool Merge(const std::string& other_name, const Domain& other_domain,
-             Constraint* const other_constraint, bool other_temporary);
+             bool other_temporary);
 
   std::string DebugString() const;
 
   std::string name;
   Domain domain;
-  // The constraint that defines this variable, if any, and nullptr otherwise.
-  // This is the reverse field of Constraint::target_variable. This constraint
-  // is not owned by the variable.
-  Constraint* defining_constraint;
   // Indicates if the variable is a temporary variable created when flattening
   // the model. For instance, if you write x == y * z + y, then it will be
   // expanded into y * z == t and x = t + y. And t will be a temporary variable.
@@ -176,7 +169,7 @@ struct Argument {
   bool HasOneValue() const;
   // Returns the value of the argument. Does DCHECK(HasOneValue()).
   int64 Value() const;
-  // Returns true if if it an integer list, or an array of integer
+  // Returns true if it an integer list, or an array of integer
   // variables (or domain) each having only one value.
   bool IsArrayOfValues() const;
   // Returns true if the argument is an integer value, an integer
@@ -202,10 +195,9 @@ struct Argument {
 // Constraint is on the heap, and owned by the global Model object.
 struct Constraint {
   Constraint(const std::string& t, std::vector<Argument> args,
-             bool strong_propag, IntegerVariable* target)
+             bool strong_propag)
       : type(t),
         arguments(std::move(args)),
-        target_variable(target),
         strong_propagation(strong_propag),
         active(true),
         presolve_propagation_done(false) {}
@@ -214,22 +206,15 @@ struct Constraint {
 
   // Helpers to be used during presolve.
   void MarkAsInactive();
-  // Cleans the field target_variable, as well as the field defining_constraint
-  // on the target_variable.
-  void RemoveTargetVariable();
   // Helper method to remove one argument.
   void RemoveArg(int arg_pos);
   // Set as a False constraint.
   void SetAsFalse();
 
   // The flatzinc type of the constraint (i.e. "int_eq" for integer equality)
-  // stored as a std::string.
+  // stored as a string.
   std::string type;
   std::vector<Argument> arguments;
-  // Indicates if the constraint actually propagates towards a target variable
-  // (target_variable will be nullptr otherwise). This is the reverse field of
-  // IntegerVariable::defining_constraint.
-  IntegerVariable* target_variable;
   // Is true if the constraint should use the strongest level of propagation.
   // This is a hint in the model. For instance, in the AllDifferent constraint,
   // there are different algorithms to propagate with different pruning/speed
@@ -271,7 +256,7 @@ struct Annotation {
   static Annotation Interval(int64 interval_min, int64 interval_max);
   static Annotation IntegerValue(int64 value);
   static Annotation Variable(IntegerVariable* const var);
-  static Annotation VariableList(std::vector<IntegerVariable*> vars);
+  static Annotation VariableList(std::vector<IntegerVariable*> variables);
   static Annotation String(const std::string& str);
 
   std::string DebugString() const;
@@ -338,14 +323,12 @@ class Model {
   // The objects returned by AddVariable(), AddConstant(),  and AddConstraint()
   // are owned by the model and will remain live for its lifetime.
   IntegerVariable* AddVariable(const std::string& name, const Domain& domain,
-                               bool temporary);
+                               bool defined);
   IntegerVariable* AddConstant(int64 value);
   // Creates and add a constraint to the model.
-  // The parameter strong is an indication from the model that prefers stronger
-  // (and more expensive version of the propagator).
-  void AddConstraint(const std::string& type, std::vector<Argument> arguments,
-                     bool strong, IntegerVariable* target_variable);
-  void AddConstraint(const std::string& type, std::vector<Argument> arguments);
+  void AddConstraint(const std::string& id, std::vector<Argument> arguments,
+                     bool is_domain);
+  void AddConstraint(const std::string& id, std::vector<Argument> arguments);
   void AddOutput(SolutionOutputSpecs output);
 
   // Set the search annotations and the objective: either simply satisfy the
@@ -416,9 +399,13 @@ class ModelStatistics {
  private:
   const Model& model_;
   std::map<std::string, std::vector<Constraint*>> constraints_per_type_;
-  std::unordered_map<const IntegerVariable*, std::vector<Constraint*>>
+  absl::flat_hash_map<const IntegerVariable*, std::vector<Constraint*>>
       constraints_per_variables_;
 };
+
+// Helper method to flatten Search annotations.
+void FlattenAnnotations(const Annotation& ann, std::vector<Annotation>* out);
+
 }  // namespace fz
 }  // namespace operations_research
 

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -31,8 +31,9 @@
 // - examples/python/sudoku.py
 // - examples/python/zebra.py
 
-%include "ortools/base/base.i"
+%include "stdint.i"
 
+%include "ortools/base/base.i"
 %include "ortools/util/python/proto.i"
 
 // PY_CONVERT_HELPER_* macros.
@@ -41,10 +42,10 @@
 // std::function utilities.
 %include "ortools/util/python/functions.i"
 
-%import "ortools/util/python/vector.i"
+%include "ortools/util/python/vector.i"
 
 // We *do* need to use SWIGTYPE_... type names directly, because the
-// (recommended replacement) $descriptor macro fails, as of 2014-06, with
+// (recommended replacement) $descriptor macro fails, as of 2019-07, with
 // types such as operations_research::Solver.
 // The absence of whitespace before 'swiglint' is mandatory.
 //swiglint: disable swigtype-name
@@ -55,7 +56,7 @@
 namespace operations_research {
 class AssignmentProto;
 class ConstraintSolverParameters;
-class SearchLimitParameters;
+class RegularLimitParameters;
 }  // namespace operations_research
 
 %{
@@ -91,7 +92,7 @@ struct FailureProtect {
 %module(directors="1") operations_research
 // The %feature and %exception below let python exceptions that occur within
 // director method propagate to the user as they were originally. See
-// http://www.i.org/Doc1.3/Python.html#Python_nn36 for example.
+// http://www.swig.org/Doc1.3/Python.html#Python_nn36 for example.
 %feature("director:except") {
     if ($error != NULL) {
         throw Swig::DirectorMethodException();
@@ -113,28 +114,12 @@ PY_CONVERT_HELPER_PTR(IntervalVar);
 PY_CONVERT_HELPER_PTR(SequenceVar);
 PY_CONVERT_HELPER_PTR(LocalSearchOperator);
 PY_CONVERT_HELPER_PTR(LocalSearchFilter);
+PY_CONVERT_HELPER_PTR(LocalSearchFilterManager);
 PY_CONVERT_HELPER_INTEXPR_OR_INTVAR(IntVar);
 PY_CONVERT_HELPER_INTEXPR_OR_INTVAR(IntExpr);
 
 
 // Actual conversions. This also includes the conversion to std::vector<Class>.
-%define PY_CONVERT(Class)
-%{
-bool CanConvertTo ## Class(PyObject *py_obj) {
-  operations_research::Class* tmp;
-  return PyObjAs(py_obj, &tmp);
-}
-%}
-%typemap(in) operations_research::Class* const {
-  if (!PyObjAs($input, &$1)) SWIG_fail;
-}
-%typecheck(SWIG_TYPECHECK_POINTER) operations_research::Class* const {
-  $1 = CanConvertTo ## Class($input);
-  if ($1 == 0) PyErr_Clear();
-}
-PY_LIST_OUTPUT_TYPEMAP(operations_research::Class*, CanConvertTo ## Class,
-                       PyObjAs<operations_research::Class*>);
-%enddef
 PY_CONVERT(IntVar);
 PY_CONVERT(IntExpr);
 PY_CONVERT(Decision);
@@ -144,7 +129,7 @@ PY_CONVERT(IntervalVar);
 PY_CONVERT(SequenceVar);
 PY_CONVERT(LocalSearchOperator);
 PY_CONVERT(LocalSearchFilter);
-#undef PY_CONVERT
+PY_CONVERT(LocalSearchFilterManager);
 
 // Support passing std::function<void(Solver*)> as argument.
 // See ../utils/python/functions.i, from which this was copied and adapted.
@@ -241,7 +226,7 @@ Constraint* PythonMethodName(int64 date) {
 #undef PRECEDENCE_CONSTRAINT
 #undef SCHEDULING_CONSTRAINT
 
-// Use DebugString() for the native std::string conversion in python, for objects
+// Use DebugString() for the native string conversion in python, for objects
 // that support it.
 %define PY_STRINGIFY_DEBUGSTRING(Class)
 %extend operations_research::Class {
@@ -351,17 +336,13 @@ PY_STRINGIFY_DEBUGSTRING(Decision);
                                        penalty_factor);
   }
 
-  LocalSearchFilter* LocalSearchObjectiveFilter(
+  LocalSearchFilter* SumObjectiveFilter(
       const std::vector<IntVar*>& vars,
       Solver::IndexEvaluator2 values,
-      IntVar* const objective,
-      Solver::LocalSearchFilterBound filter_enum,
-      Solver::LocalSearchOperation op_enum) {
-    return $self->MakeLocalSearchObjectiveFilter(vars,
-                                                values,
-                                                objective,
-                                                filter_enum,
-                                                op_enum);
+      Solver::LocalSearchFilterBound filter_enum) {
+    return $self->MakeSumObjectiveFilter(vars,
+                                         values,
+                                         filter_enum);
   }
 }
 
@@ -688,7 +669,7 @@ PY_STRINGIFY_DEBUGSTRING(Decision);
     solver->clear_fail_intercept();
     // IMPORTANT: the type and message of the exception raised matter,
     // because they are caught by the python overrides of some CP classes.
-    // See the occurrences of the "PyExc_Exception" std::string below.
+    // See the occurrences of the "PyExc_Exception" string below.
     PyErr_SetString(PyExc_Exception, "CP Solver fail");
     SWIG_fail;
   }
@@ -753,7 +734,7 @@ namespace operations_research {
 %unignore Solver::SolveAndCommit;
 %unignore Solver::FinishCurrentSearch;
 %unignore Solver::RestartCurrentSearch;
-// TOOD(lperron): Support Action in python.
+// TODO(user): Support Action in python.
 // %unignore Solver::AddBacktrackAction;
 
 // Solver: Debug and performance counters.
@@ -920,7 +901,7 @@ namespace operations_research {
 %rename (ConstantRestart) Solver::MakeConstantRestart;
 
 // Solver: Search Limits.
-%unignore Solver::SearchLimitParameters;  // search_limit.proto
+%unignore Solver::RegularLimitParameters;  // search_limit.proto
 %rename (Limit) Solver::MakeLimit;
 %rename (TimeLimit) Solver::MakeTimeLimit;
 %rename (BranchesLimit) Solver::MakeBranchesLimit;
@@ -931,7 +912,6 @@ namespace operations_research {
 // Solver: Search logs.
 %rename (SearchLog) Solver::MakeSearchLog;
 %rename (SearchTrace) Solver::MakeSearchTrace;
-%rename (TreeMonitor) Solver::MakeTreeMonitor;
 
 // Solver: Model visitors.
 %unignore Solver::Accept;
@@ -1050,12 +1030,6 @@ namespace operations_research {
 %unignore Solver::LE;
 %unignore Solver::EQ;
 
-%unignore Solver::LocalSearchOperation;
-%unignore Solver::SUM;
-%unignore Solver::PROD;
-%unignore Solver::MAX;
-%unignore Solver::MIN;
-
 }  // namespace operations_research
 
 // ============= Unexposed C++ API : Solver class ==============
@@ -1073,11 +1047,6 @@ namespace operations_research {
 // - AddCastConstraint()
 //
 // - state()
-//
-// - ExportModel()
-// - LoadModel()
-// - UpgradeModel()
-//
 //
 // - DebugString()
 // - VirtualMemorySize()
@@ -1785,7 +1754,6 @@ namespace operations_research {
 // - Reset()
 // - Clone()
 // - Copy()
-// - Var()
 // - Store()
 // - Restore()
 // - LoadFromProto()
@@ -1822,6 +1790,7 @@ namespace operations_research {
 %unignore IntervalVarElement::SetPerformedMax;
 %unignore IntervalVarElement::SetPerformedRange;
 %unignore IntervalVarElement::SetPerformedValue;
+%unignore IntervalVarElement::Var;
 
 // SequenceVarElement
 // Ignored:
@@ -1830,7 +1799,6 @@ namespace operations_research {
 // - Reset()
 // - Clone()
 // - Copy()
-// - Var()
 // - Store()
 // - Restore()
 // - LoadFromProto()
@@ -1846,6 +1814,7 @@ namespace operations_research {
 %unignore SequenceVarElement::SetForwardSequence;
 %unignore SequenceVarElement::SetBackwardSequence;
 %unignore SequenceVarElement::SetUnperformed;
+%unignore SequenceVarElement::Var;
 
 // AssignmentContainer<>
 // Ignored:
@@ -1887,9 +1856,9 @@ PY_PROTO_TYPEMAP(ortools.constraint_solver.assignment_pb2,
 PY_PROTO_TYPEMAP(ortools.constraint_solver.solver_parameters_pb2,
                  ConstraintSolverParameters,
                  operations_research::ConstraintSolverParameters)
-PY_PROTO_TYPEMAP(ortools.constraint_solver_search_limit_pb2,
-                 SearchLimitParameters,
-                 operations_research::SearchLimitParameters)
+PY_PROTO_TYPEMAP(ortools.constraint_solver.search_limit_pb2,
+                 RegularLimitParameters,
+                 operations_research::RegularLimitParameters)
 
 %include "ortools/constraint_solver/constraint_solver.h"
 
@@ -1917,19 +1886,29 @@ namespace operations_research {
 %unignore Rev<bool>::SetValue;
 %template(RevBool) Rev<bool>;
 
-%rename (IntContainer) AssignmentContainer<IntVar, IntVarElement>;
-%rename (Element)
-    AssignmentContainer<IntVar, IntVarElement>::MutableElement(int);
-%unignore AssignmentContainer<IntVar, IntVarElement>::Size;
-%template (IntContainer) AssignmentContainer<IntVar, IntVarElement>;
-%rename (IntervalContainer)
-    AssignmentContainer<IntervalVar, IntervalVarElement>;
-%template (IntervalContainer)
-    AssignmentContainer<IntervalVar, IntervalVarElement>;
-%rename (SequenceContainer)
-    AssignmentContainer<SequenceVar, SequenceVarElement>;
-%template (SequenceContainer)
-    AssignmentContainer<SequenceVar, SequenceVarElement>;
+#define PARENTHIZE(X...) X
+%define RENAME_ASSIGNMENT_CONTAINER(TYPE, NEW_NAME)
+%rename (NEW_NAME) TYPE;
+%unignore TYPE::Contains;
+%rename (Element) TYPE::MutableElement(int);
+%unignore TYPE::Size;
+%unignore TYPE::Store;
+%unignore TYPE::Restore;
+%template (NEW_NAME) TYPE;
+%enddef
+
+RENAME_ASSIGNMENT_CONTAINER(
+    PARENTHIZE(AssignmentContainer<IntVar, IntVarElement>),
+    IntVarContainer)
+RENAME_ASSIGNMENT_CONTAINER(
+    PARENTHIZE(AssignmentContainer<IntervalVar, IntervalVarElement>),
+    IntervalVarContainer)
+RENAME_ASSIGNMENT_CONTAINER(
+    PARENTHIZE(AssignmentContainer<SequenceVar, SequenceVarElement>),
+    SequenceVarContainer)
+
+#undef RENAME_ASSIGNMENT_CONTAINER
+#undef PARENTHIZE
 
 }  // namespace operations_research
 
@@ -2021,6 +2000,7 @@ namespace operations_research {
 %unignore IntVarLocalSearchOperator::IntVarLocalSearchOperator;
 %unignore IntVarLocalSearchOperator::~IntVarLocalSearchOperator;
 %unignore IntVarLocalSearchOperator::Size;
+%feature("nodirector") IntVarLocalSearchOperator::Start;
 %rename (OneNeighbor) IntVarLocalSearchOperator::MakeOneNeighbor;
 
 
@@ -2074,6 +2054,12 @@ namespace operations_research {
 %unignore LocalSearchFilter::Synchronize;
 %unignore LocalSearchFilter::IsIncremental;
 
+// LocalSearchFilterManager
+%unignore LocalSearchFilterManager;
+%unignore LocalSearchFilterManager::LocalSearchFilterManager;
+%unignore LocalSearchFilterManager::~LocalSearchFilterManager;
+%unignore LocalSearchFilterManager::Accept;
+%unignore LocalSearchFilterManager::Synchronize;
 
 // IntVarLocalSearchFilter
 // Ignored:

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,15 +17,17 @@
 #include <limits>
 #include <numeric>
 
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "ortools/algorithms/dense_doubly_linked_list.h"
 #include "ortools/algorithms/dynamic_partition.h"
 #include "ortools/algorithms/dynamic_permutation.h"
 #include "ortools/algorithms/sparse_permutation.h"
-#include "ortools/base/canonical_errors.h"
 #include "ortools/base/commandlineflags.h"
-#include "ortools/base/join.h"
-#include "ortools/base/stringprintf.h"
-#include "ortools/base/time_support.h"
 #include "ortools/graph/iterators.h"
 #include "ortools/graph/util.h"
 
@@ -350,17 +352,17 @@ void GetAllOtherRepresentativesInSamePartAs(
 }
 }  // namespace
 
-util::Status GraphSymmetryFinder::FindSymmetries(
+absl::Status GraphSymmetryFinder::FindSymmetries(
     double time_limit_seconds, std::vector<int>* node_equivalence_classes_io,
     std::vector<std::unique_ptr<SparsePermutation>>* generators,
     std::vector<int>* factorized_automorphism_group_size) {
   // Initialization.
-  time_limit_.reset(new TimeLimit(time_limit_seconds));
+  time_limit_ = absl::make_unique<TimeLimit>(time_limit_seconds);
   IF_STATS_ENABLED(stats_.initialization_time.StartTimer());
   generators->clear();
   factorized_automorphism_group_size->clear();
   if (node_equivalence_classes_io->size() != NumNodes()) {
-    return util::Status(util::error::INVALID_ARGUMENT,
+    return absl::Status(absl::StatusCode::kInvalidArgument,
                         "Invalid 'node_equivalence_classes_io'.");
   }
   DynamicPartition base_partition(*node_equivalence_classes_io);
@@ -371,7 +373,7 @@ util::Status GraphSymmetryFinder::FindSymmetries(
                                           &base_partition);
   }
   if (time_limit_->LimitReached()) {
-    return util::Status(util::error::DEADLINE_EXCEEDED,
+    return absl::Status(absl::StatusCode::kDeadlineExceeded,
                         "During the initial refinement.");
   }
   VLOG(4) << "Base partition: "
@@ -427,7 +429,7 @@ util::Status GraphSymmetryFinder::FindSymmetries(
             << "; partition after: "
             << base_partition.DebugString(DynamicPartition::SORT_BY_PART);
     if (time_limit_->LimitReached()) {
-      return util::Status(util::error::DEADLINE_EXCEEDED,
+      return absl::Status(absl::StatusCode::kDeadlineExceeded,
                           "During the invariant dive.");
     }
   }
@@ -537,10 +539,10 @@ util::Status GraphSymmetryFinder::FindSymmetries(
   IF_STATS_ENABLED(stats_.SetPrintOrder(StatsGroup::SORT_BY_NAME));
   IF_STATS_ENABLED(LOG(INFO) << "Statistics: " << stats_.StatString());
   if (time_limit_->LimitReached()) {
-    return util::Status(util::error::DEADLINE_EXCEEDED,
+    return absl::Status(absl::StatusCode::kDeadlineExceeded,
                         "Some automorphisms were found, but probably not all.");
   }
-  return util::Status::OK;
+  return ::absl::OkStatus();
 }
 
 namespace {
@@ -1011,12 +1013,12 @@ bool GraphSymmetryFinder::ConfirmFullMatchOrFindNextMappingDecision(
 }
 
 std::string GraphSymmetryFinder::SearchState::DebugString() const {
-  return StringPrintf(
+  return absl::StrFormat(
       "SearchState{ base_node=%d, first_image_node=%d,"
       " remaining_pruned_image_nodes=[%s],"
       " num_parts_before_trying_to_map_base_node=%d }",
       base_node, first_image_node,
-      absl::StrJoin(remaining_pruned_image_nodes, " ").c_str(),
+      absl::StrJoin(remaining_pruned_image_nodes, " "),
       num_parts_before_trying_to_map_base_node);
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -89,9 +89,9 @@ Status EnteringVariable::PrimalChooseEnteringColumn(ColIndex* entering_col) {
 Status EnteringVariable::DualChooseEnteringColumn(
     const UpdateRow& update_row, Fractional cost_variation,
     std::vector<ColIndex>* bound_flip_candidates, ColIndex* entering_col,
-    Fractional* pivot, Fractional* step) {
+    Fractional* step) {
   GLOP_RETURN_ERROR_IF_NULL(entering_col);
-  GLOP_RETURN_ERROR_IF_NULL(pivot);
+  GLOP_RETURN_ERROR_IF_NULL(step);
   const DenseRow& update_coefficient = update_row.GetCoefficients();
   const DenseRow& reduced_costs = reduced_costs_->GetReducedCosts();
   SCOPED_TIME_STAT(&stats_);
@@ -196,20 +196,22 @@ Status EnteringVariable::DualChooseEnteringColumn(
       }
     }
 
-    // Update harris_ratio.
-    harris_ratio = std::min(harris_ratio,
-                            top.ratio + harris_tolerance / top.coeff_magnitude);
-
-    // If the dual infeasibility is too high, the harris_ratio can be
-    // negative. In this case we set it to 0.0, allowing any infeasible
-    // position to enter the basis. This is quite important because its helps
-    // in the choice of a stable pivot.
-    harris_ratio = std::max(harris_ratio, 0.0);
-
     // TODO(user): We want to maximize both the ratio (objective improvement)
     // and the coeff_magnitude (stable pivot), so we have to make some
-    // trade-offs.
+    // trade-offs. Investigate alternative strategies.
     if (top.coeff_magnitude >= best_coeff) {
+      // Update harris_ratio. Note that because we process ratio in order, the
+      // harris ratio can only get smaller if the coeff_magnitude is bigger
+      // than the one of the best coefficient.
+      harris_ratio = std::min(
+          harris_ratio, top.ratio + harris_tolerance / top.coeff_magnitude);
+
+      // If the dual infeasibility is too high, the harris_ratio can be
+      // negative. In this case we set it to 0.0, allowing any infeasible
+      // position to enter the basis. This is quite important because its
+      // helps in the choice of a stable pivot.
+      harris_ratio = std::max(harris_ratio, 0.0);
+
       if (top.coeff_magnitude == best_coeff && top.ratio == *step) {
         DCHECK_NE(*entering_col, kInvalidCol);
         equivalent_entering_choices_.push_back(top.col);
@@ -241,7 +243,6 @@ Status EnteringVariable::DualChooseEnteringColumn(
   }
 
   if (*entering_col == kInvalidCol) return Status::OK();
-  *pivot = update_coefficient[*entering_col];
 
   // If the step is 0.0, we make sure the reduced cost is 0.0 so
   // UpdateReducedCosts() will not take a step that goes in the wrong way (a few
@@ -266,9 +267,9 @@ Status EnteringVariable::DualChooseEnteringColumn(
 
 Status EnteringVariable::DualPhaseIChooseEnteringColumn(
     const UpdateRow& update_row, Fractional cost_variation,
-    ColIndex* entering_col, Fractional* pivot, Fractional* step) {
+    ColIndex* entering_col, Fractional* step) {
   GLOP_RETURN_ERROR_IF_NULL(entering_col);
-  GLOP_RETURN_ERROR_IF_NULL(pivot);
+  GLOP_RETURN_ERROR_IF_NULL(step);
   const DenseRow& update_coefficient = update_row.GetCoefficients();
   const DenseRow& reduced_costs = reduced_costs_->GetReducedCosts();
   SCOPED_TIME_STAT(&stats_);
@@ -365,8 +366,6 @@ Status EnteringVariable::DualPhaseIChooseEnteringColumn(
     std::pop_heap(breakpoints_.begin(), breakpoints_.end());
     breakpoints_.pop_back();
   }
-  *pivot =
-      (*entering_col == kInvalidCol) ? 0.0 : update_coefficient[*entering_col];
   return Status::OK();
 }
 

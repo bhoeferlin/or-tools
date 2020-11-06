@@ -1,4 +1,4 @@
-// Copyright 2010-2014 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -13,6 +13,8 @@
 
 // TODO(user): Refactor this file to adhere to the SWIG style guide.
 %include "ortools/constraint_solver/csharp/constraint_solver.i"
+%include "ortools/constraint_solver/csharp/routing_types.i"
+%include "ortools/constraint_solver/csharp/routing_index_manager.i"
 
 // We need to forward-declare the proto here, so that PROTO_INPUT involving it
 // works correctly. The order matters very much: this declaration needs to be
@@ -25,218 +27,137 @@ class RoutingSearchParameters;
 // Include the file we want to wrap a first time.
 %{
 #include "ortools/constraint_solver/routing.h"
+#include "ortools/constraint_solver/routing_index_manager.h"
+#include "ortools/constraint_solver/routing_parameters.h"
+#include "ortools/constraint_solver/routing_parameters.pb.h"
+#include "ortools/constraint_solver/routing_types.h"
 %}
 
 %module(directors="1") operations_research;
-%feature("director") swig_util::NodeEvaluator2;
 
-// Convert RoutingModel::NodeIndex to (32-bit signed) integers.
-%typemap(ctype) operations_research::RoutingModel::NodeIndex "int"
-%typemap(imtype) operations_research::RoutingModel::NodeIndex "int"
-%typemap(cstype) operations_research::RoutingModel::NodeIndex "int"
-%typemap(csin) operations_research::RoutingModel::NodeIndex "$csinput"
-%typemap(csout) operations_research::RoutingModel::NodeIndex {
-  return $imcall;
-}
-%typemap(in) operations_research::RoutingModel::NodeIndex {
-  $1 = operations_research::RoutingModel::NodeIndex($input);
-}
-%typemap(out) operations_research::RoutingModel::NodeIndex {
-  $result = $1.value();
-}
-%typemap(csvarin) operations_research::RoutingModel::NodeIndex
-%{
-        set { $imcall; }
-%}
-%typemap(csvarout, excode=SWIGEXCODE)  operations_research::RoutingModel::NodeIndex
-%{
-  get {
-        return $imcall;
-  }
-%}
+// RoutingModel methods.
+DEFINE_INDEX_TYPE_TYPEDEF(
+    operations_research::RoutingCostClassIndex,
+    operations_research::RoutingModel::CostClassIndex);
+DEFINE_INDEX_TYPE_TYPEDEF(
+    operations_research::RoutingDimensionIndex,
+    operations_research::RoutingModel::DimensionIndex);
+DEFINE_INDEX_TYPE_TYPEDEF(
+    operations_research::RoutingDisjunctionIndex,
+    operations_research::RoutingModel::DisjunctionIndex);
+DEFINE_INDEX_TYPE_TYPEDEF(
+    operations_research::RoutingVehicleClassIndex,
+    operations_research::RoutingModel::VehicleClassIndex);
 
-// This typemap maps C# TypeA[] arrays to C++ std::vector<TypeB>, where
-// TypeA and TypeB are strictly equivalent, bit-wise (like an IntType
-// and an int, for example). This is done via an intermediate mapping
-// to pairs (int length, TypeA*).
-//
-// We need to redefine it ourselves it because std_vector.i will only
-// allow these conversions when TypeA == TypeB.
-%define CS_TYPEMAP_STDVECTOR(TYPE, CTYPE, CSHARPTYPE)
-%typemap(ctype)    const std::vector<TYPE>&  %{ int length$argnum, CTYPE* %}
-%typemap(imtype)   const std::vector<TYPE>&  %{ int length$argnum, CSHARPTYPE[] %}
-%typemap(cstype)   const std::vector<TYPE>&  %{ CSHARPTYPE[] %}
-%typemap(csin)     const std::vector<TYPE>&  "$csinput.Length, $csinput"
-%typemap(freearg)  const std::vector<TYPE>&  { delete $1; }
-%typemap(in)       const std::vector<TYPE>&  %{
-  $1 = new std::vector<TYPE>;
-  $1->reserve(length$argnum);
-  for(int i = 0; i < length$argnum; ++i) {
-    $1->emplace_back($input[i]);
-  }
-%}
-%enddef // CS_TYPEMAP_STDVECTOR
+namespace operations_research {
 
-CS_TYPEMAP_STDVECTOR(operations_research::RoutingModel::NodeIndex, int, int);
-
-// Ditto, for bi-dimensional arrays: map C# TypeA[][] to C++
-// std::vector<std::vector<TypeB>>.
-%define CS_TYPEMAP_STDVECTOR_IN1(TYPE, CTYPE, CSHARPTYPE)
-%typemap(ctype)  const std::vector<std::vector<TYPE> >&  %{
-  int len$argnum_1, int len$argnum_2[], CTYPE*
-%}
-%typemap(imtype) const std::vector<std::vector<TYPE> >&  %{
-  int len$argnum_1, int[] len$argnum_2, CSHARPTYPE[]
-%}
-%typemap(cstype) const std::vector<std::vector<TYPE> >&  %{ CSHARPTYPE[][] %}
-%typemap(csin)   const std::vector<std::vector<TYPE> >&  "$csinput.GetLength(0), NestedArrayHelper.GetArraySecondSize($csinput), NestedArrayHelper.GetFlatArray($csinput)"
-%typemap(in)     const std::vector<std::vector<TYPE> >&  (std::vector<std::vector<TYPE> > result) %{
-
-  result.clear();
-  result.resize(len$argnum_1);
-
-  TYPE* inner_array = reinterpret_cast<TYPE*>($input);
-
-  int actualIndex = 0;
-  for (int index1 = 0; index1 < len$argnum_1; ++index1) {
-    result[index1].reserve(len$argnum_2[index1]);
-    for (int index2 = 0; index2 < len$argnum_2[index1]; ++index2) {
-      const TYPE value = inner_array[actualIndex];
-      result[index1].emplace_back(value);
-      actualIndex++;
-    }
+// RoutingModel
+%unignore RoutingModel;
+%typemap(cscode) RoutingModel %{
+  // Keep reference to delegate to avoid GC to collect them early.
+  private List<LongToLong> unaryTransitCallbacks;
+  private LongToLong StoreLongToLong(LongToLong c) {
+    if (unaryTransitCallbacks == null)
+      unaryTransitCallbacks = new List<LongToLong>();
+    unaryTransitCallbacks.Add(c);
+    return c;
   }
 
-  $1 = &result;
-%}
-%enddef // CS_TYPEMAP_STDVECTOR_IN1
-
-CS_TYPEMAP_STDVECTOR_IN1(operations_research::RoutingModel::NodeIndex, int, int);
-
-// Create input mapping for NodeEvaluator2 callback wrapping.
-// TODO(user): split out the callback code; it creates another file since
-// it uses a different module.
-%{
-namespace swig_util {
-class NodeEvaluator2 : private operations_research::RoutingModel::NodeEvaluator2 {
- public:
-  NodeEvaluator2() : used_as_permanent_handler_(false) {}
-
-  virtual ~NodeEvaluator2() {}
-
-  virtual int64 Run(int i, int j) = 0;
-
-  operations_research::RoutingModel::NodeEvaluator2* GetPermanentCallback() {
-    CHECK(!used_as_permanent_handler_);
-    used_as_permanent_handler_ = true;
-    return this;
+  private List<LongLongToLong> transitCallbacks;
+  private LongLongToLong StoreLongLongToLong(LongLongToLong c) {
+    if (transitCallbacks == null)
+      transitCallbacks = new List<LongLongToLong>();
+    transitCallbacks.Add(c);
+    return c;
   }
 
- private:
-  virtual bool IsRepeatable() const { return true; }
-
-  virtual int64 Run(operations_research::RoutingModel::NodeIndex i,
-                    operations_research::RoutingModel::NodeIndex j) {
-    return Run(i.value(), j.value());
-  }
-
-  bool used_as_permanent_handler_;
-};
-}  // namespace swig_util
-%}
-
-// We prefer keeping this C# extension here (instead of moving it to a dedicated
-// C# file, using partial classes) because it uses SWIG's $descriptor().
-%typemap(cscode) swig_util::NodeEvaluator2 %{
-  public $descriptor(operations_research::RoutingModel::NodeEvaluator2*) DisownAndGetPermanentCallback() {
-    swigCMemOwn = false;
-    GC.SuppressFinalize(this);
-    return GetPermanentCallback();
+  private List<VoidToVoid> solutionCallbacks;
+  private VoidToVoid StoreVoidToVoid(VoidToVoid c) {
+    if (solutionCallbacks == null)
+      solutionCallbacks = new List<VoidToVoid>();
+    solutionCallbacks.Add(c);
+    return c;
   }
 %}
-
-namespace swig_util {
-class NodeEvaluator2 : private ::operations_research::RoutingModel::NodeEvaluator2 {
- public:
-  NodeEvaluator2();
-  virtual int64 Run(int i, int j) = 0;
-  ::operations_research::RoutingModel::NodeEvaluator2* GetPermanentCallback();
-  virtual ~NodeEvaluator2();
-
- private:
-  virtual bool IsRepeatable() const;
-  virtual int64 Run(::operations_research::RoutingModel::NodeIndex i,
-                    ::operations_research::RoutingModel::NodeIndex j);
-  bool used_as_permanent_handler_;
-};
-}  // namespace swig_util
-
-
-%typemap(cscode) operations_research::RoutingModel %{
-      private System.Collections.Generic.List<NodeEvaluator2> pinned =
-          new System.Collections.Generic.List<NodeEvaluator2>();
-    
-    private HandleRef TakeOwnershipAndAddReference(NodeEvaluator2 value)
-    {
-        var handle = $descriptor(ResultCallback2<int64, RoutingNodeIndex, RoutingNodeIndex>*).getCPtr(value.DisownAndGetPermanentCallback());
-        this.pinned.Add(value);
-        return handle;
-    }
-    
-    private HandleRef TakeOwnershipAndAddReference(NodeEvaluator2[] values)
-    {
-        NodeEvaluator2Vector vector = new NodeEvaluator2Vector(values);
-        foreach (NodeEvaluator2 value in values)
-        {
-            value.DisownAndGetPermanentCallback();
-            this.pinned.Add(value);
-        }
-        
-        return NodeEvaluator2Vector.getCPtr(vector);
-    }
-%}
-
-// Typemaps for NodeEvaluator2 callbacks in csharp.
-%typemap(cstype) operations_research::RoutingModel::NodeEvaluator2* "NodeEvaluator2";
-%typemap(csin) operations_research::RoutingModel::NodeEvaluator2* "this.TakeOwnershipAndAddReference($csinput)";
-
-// Typemaps for NodeEvaluator2 arrays in csharp.
-%typemap(cstype) std::vector<ResultCallback2<int64, RoutingNodeIndex, RoutingNodeIndex>*>& "NodeEvaluator2[]";
-%typemap(csin) std::vector<ResultCallback2<int64, RoutingNodeIndex, RoutingNodeIndex>*>& %{  this.TakeOwnershipAndAddReference($csinput) %}
-
-%rename (RoutingModelStatus) operations_research::RoutingModel::Status;
-
-%ignore operations_research::RoutingModel::AddVectorDimension(
-    const int64* values,
+// Ignored:
+%ignore RoutingModel::AddDimensionDependentDimensionWithVehicleCapacity;
+%ignore RoutingModel::AddHardTypeIncompatibility;
+%ignore RoutingModel::AddMatrixDimension(
+    std::vector<std::vector<int64> > values,
     int64 capacity,
+    bool fix_start_cumul_to_zero,
     const std::string& name);
+%ignore RoutingModel::AddSameVehicleRequiredTypeAlternatives;
+%ignore RoutingModel::AddTemporalRequiredTypeAlternatives;
+%ignore RoutingModel::AddTemporalTypeIncompatibility;
+%ignore RoutingModel::CloseVisitTypes;
+%ignore RoutingModel::GetAllDimensionNames;
+%ignore RoutingModel::GetAutomaticFirstSolutionStrategy;
+%ignore RoutingModel::GetDeliveryIndexPairs;
+%ignore RoutingModel::GetDimensions;
+%ignore RoutingModel::GetDimensionsWithSoftAndSpanCosts;
+%ignore RoutingModel::GetDimensionsWithSoftOrSpanCosts;
+%ignore RoutingModel::GetGlobalDimensionCumulOptimizers;
+%ignore RoutingModel::GetHardTypeIncompatibilitiesOfType;
+%ignore RoutingModel::GetLocalDimensionCumulMPOptimizers;
+%ignore RoutingModel::GetLocalDimensionCumulOptimizers;
+%ignore RoutingModel::GetMutableGlobalCumulOptimizer;
+%ignore RoutingModel::GetMutableLocalCumulOptimizer;
+%ignore RoutingModel::GetMutableLocalCumulMPOptimizer;
+%ignore RoutingModel::GetPerfectBinaryDisjunctions;
+%ignore RoutingModel::GetPickupIndexPairs;
+%ignore RoutingModel::GetSameVehicleRequiredTypeAlternativesOfType;
+%ignore RoutingModel::GetTemporalRequiredTypeAlternativesOfType;
+%ignore RoutingModel::GetTemporalTypeIncompatibilitiesOfType;
+%ignore RoutingModel::HasHardTypeIncompatibilities;
+%ignore RoutingModel::HasSameVehicleTypeRequirements;
+%ignore RoutingModel::HasTemporalTypeIncompatibilities;
+%ignore RoutingModel::HasTemporalTypeRequirements;
+%ignore RoutingModel::HasTypeRegulations;
+%ignore RoutingModel::MakeStateDependentTransit;
+%ignore RoutingModel::PackCumulsOfOptimizerDimensionsFromAssignment;
+%ignore RoutingModel::RegisterStateDependentTransitCallback;
+%ignore RoutingModel::RemainingTime;
+%ignore RoutingModel::StateDependentTransitCallback;
+%ignore RoutingModel::SolveWithParameters(
+    const RoutingSearchParameters& search_parameters,
+    std::vector<const Assignment*>* solutions);
+%ignore RoutingModel::SolveFromAssignmentWithParameters(
+      const Assignment* assignment,
+      const RoutingSearchParameters& search_parameters,
+      std::vector<const Assignment*>* solutions);
+%ignore RoutingModel::TransitCallback;
+%ignore RoutingModel::UnaryTransitCallbackOrNull;
 
-%ignore operations_research::RoutingModel::AddMatrixDimension(
-    const int64* const* values,
-    int64 capacity,
-    const std::string& name);
-
-%ignore operations_research::RoutingModel::MakeStateDependentTransit;
-%ignore operations_research::RoutingModel::AddDimensionDependentDimensionWithVehicleCapacity;
-
-%extend operations_research::RoutingModel {
-  void AddVectorDimension(const std::vector<int64>& values,
-                          int64 capacity,
-                          bool fix_start_cumul_to_zero,
-                          const std::string& name) {
-    DCHECK_EQ(values.size(), self->nodes());
-    self->AddVectorDimension(values.data(), capacity,
-                             fix_start_cumul_to_zero, name);
+// RoutingDimension
+%unignore RoutingDimension;
+%typemap(cscode) RoutingDimension %{
+  // Keep reference to delegate to avoid GC to collect them early.
+  private List<IntIntToLong> limitCallbacks;
+  private IntIntToLong StoreIntIntToLong(IntIntToLong limit) {
+    if (limitCallbacks == null)
+      limitCallbacks = new List<IntIntToLong>();
+    limitCallbacks.Add(limit);
+    return limit;
   }
-}
 
-%ignore operations_research::RoutingModel::WrapIndexEvaluator(
-    Solver::IndexEvaluator2* evaluator);
+  private List<LongLongToLong> groupDelayCallbacks;
+  private LongLongToLong StoreLongLongToLong(LongLongToLong groupDelay) {
+    if (groupDelayCallbacks == null)
+      groupDelayCallbacks = new List<LongLongToLong>();
+    groupDelayCallbacks.Add(groupDelay);
+    return groupDelay;
+  }
+%}
+%ignore RoutingDimension::GetBreakDistanceDurationOfVehicle;
 
-%ignore operations_research::RoutingModel::RoutingModel(
-    int nodes, int vehicles,
-    const std::vector<std::pair<NodeIndex, NodeIndex> >& start_end);
+// TypeRegulationsChecker
+%unignore TypeRegulationsChecker;
+%ignore TypeRegulationsChecker::CheckVehicle;
 
+}  // namespace operations_research
+
+%rename("GetStatus") operations_research::RoutingModel::status;
 %rename("%(camelcase)s", %$isfunction) "";
 
 // Protobuf support
@@ -251,6 +172,7 @@ PROTO2_RETURN(operations_research::RoutingSearchParameters,
 PROTO2_RETURN(operations_research::RoutingModelParameters,
               Google.OrTools.ConstraintSolver.RoutingModelParameters)
 
-
-%include "ortools/constraint_solver/routing_types.h"
+// TODO(user): Replace with %ignoreall/%unignoreall
+//swiglint: disable include-h-allglobals
+%include "ortools/constraint_solver/routing_parameters.h"
 %include "ortools/constraint_solver/routing.h"

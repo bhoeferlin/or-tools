@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,9 +14,8 @@
 #ifndef OR_TOOLS_UTIL_SATURATED_ARITHMETIC_H_
 #define OR_TOOLS_UTIL_SATURATED_ARITHMETIC_H_
 
+#include "absl/base/casts.h"
 #include "ortools/base/integral_types.h"
-
-#include "ortools/base/casts.h"
 #include "ortools/util/bitset.h"
 
 namespace operations_research {
@@ -105,7 +104,7 @@ inline int64 CapAddGeneric(int64 x, int64 y) {
   return AddHadOverflow(x, y, result) ? CapWithSignOf(x) : result;
 }
 
-#if defined(__GNUC__) && defined(ARCH_K8)
+#if defined(__GNUC__) && defined(__x86_64__)
 // TODO(user): port this to other architectures.
 inline int64 CapAddFast(int64 x, int64 y) {
   const int64 cap = CapWithSignOf(x);
@@ -123,7 +122,7 @@ inline int64 CapAddFast(int64 x, int64 y) {
 #endif
 
 inline int64 CapAdd(int64 x, int64 y) {
-#if defined(__GNUC__) && defined(ARCH_K8)
+#if defined(__GNUC__) && defined(__x86_64__)
   return CapAddFast(x, y);
 #else
   return CapAddGeneric(x, y);
@@ -135,7 +134,7 @@ inline int64 CapSubGeneric(int64 x, int64 y) {
   return SubHadOverflow(x, y, result) ? CapWithSignOf(x) : result;
 }
 
-#if defined(__GNUC__) && defined(ARCH_K8)
+#if defined(__GNUC__) && defined(__x86_64__)
 // TODO(user): port this to other architectures.
 inline int64 CapSubFast(int64 x, int64 y) {
   const int64 cap = CapWithSignOf(x);
@@ -153,7 +152,7 @@ inline int64 CapSubFast(int64 x, int64 y) {
 #endif
 
 inline int64 CapSub(int64 x, int64 y) {
-#if defined(__GNUC__) && defined(ARCH_K8)
+#if defined(__GNUC__) && defined(__x86_64__)
   return CapSubFast(x, y);
 #else
   return CapSubGeneric(x, y);
@@ -206,7 +205,7 @@ inline int64 CapProdGeneric(int64 x, int64 y) {
   return cap < 0 ? -abs_result : abs_result;
 }
 
-#if defined(__GNUC__) && defined(ARCH_K8)
+#if defined(__GNUC__) && defined(__x86_64__)
 // TODO(user): port this to other architectures.
 inline int64 CapProdFast(int64 x, int64 y) {
   // cap = kint64max if x and y have the same sign, cap = kint64min
@@ -230,7 +229,7 @@ inline int64 CapProdFast(int64 x, int64 y) {
 #endif
 
 inline int64 CapProd(int64 x, int64 y) {
-#if defined(__GNUC__) && defined(ARCH_K8)
+#if defined(__GNUC__) && defined(__x86_64__)
   return CapProdFast(x, y);
 #else
   return CapProdGeneric(x, y);

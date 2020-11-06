@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,7 +14,9 @@
 #ifndef OR_TOOLS_SAT_UTIL_H_
 #define OR_TOOLS_SAT_UTIL_H_
 
-#include "ortools/base/random.h"
+#include <deque>
+
+#include "absl/random/random.h"
 #include "ortools/sat/model.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
@@ -54,7 +56,7 @@ void RandomizeDecisionHeuristic(URBG* random, SatParameters* parameters);
 //
 // For a vector of size n, if we want to call this n times so that each literal
 // is last at least once, the sum of the size of the changed suffixes will be
-// O(n log n). If we where to use a simpler algorithm (like moving the last
+// O(n log n). If we were to use a simpler algorithm (like moving the last
 // unprocessed literal to the last position), this sum would be O(n^2).
 //
 // Returns the size of the common prefix of literals before and after the move,
@@ -96,6 +98,88 @@ inline void RandomizeDecisionHeuristic(URBG* random,
   parameters->set_random_branches_ratio(absl::Bernoulli(*random, 0.5) ? 0.01
                                                                       : 0.0);
 }
+
+// Manages incremental averages.
+class IncrementalAverage {
+ public:
+  // Initializes the average with 'initial_average' and number of records to 0.
+  explicit IncrementalAverage(double initial_average)
+      : average_(initial_average) {}
+  IncrementalAverage() {}
+
+  // Sets the number of records to 0 and average to 'reset_value'.
+  void Reset(double reset_value);
+
+  double CurrentAverage() const { return average_; }
+  int64 NumRecords() const { return num_records_; }
+
+  void AddData(double new_record);
+
+ private:
+  double average_ = 0.0;
+  int64 num_records_ = 0;
+};
+
+// Manages exponential moving averages defined as
+// new_average = decaying_factor * old_average
+//               + (1 - decaying_factor) * new_record.
+// where 0 < decaying_factor < 1.
+class ExponentialMovingAverage {
+ public:
+  explicit ExponentialMovingAverage(double decaying_factor)
+      : decaying_factor_(decaying_factor) {
+    DCHECK_GE(decaying_factor, 0.0);
+    DCHECK_LE(decaying_factor, 1.0);
+  }
+
+  // Returns exponential moving average for all the added data so far.
+  double CurrentAverage() const { return average_; }
+
+  // Returns the total number of added records so far.
+  int64 NumRecords() const { return num_records_; }
+
+  void AddData(double new_record);
+
+ private:
+  double average_ = 0.0;
+  int64 num_records_ = 0;
+  const double decaying_factor_;
+};
+
+// Utility to calculate percentile (First variant) for limited number of
+// records. Reference: https://en.wikipedia.org/wiki/Percentile
+//
+// After the vector is sorted, we assume that the element with index i
+// correspond to the percentile 100*(i+0.5)/size. For percentiles before the
+// first element (resp. after the last one) we return the first element (resp.
+// the last). And otherwise we do a linear interpolation between the two element
+// around the asked percentile.
+class Percentile {
+ public:
+  explicit Percentile(int record_limit) : record_limit_(record_limit) {}
+
+  void AddRecord(double record);
+
+  // Returns number of stored records.
+  int64 NumRecords() const { return records_.size(); }
+
+  // Note that this is not fast and runs in O(n log n) for n records.
+  double GetPercentile(double percent);
+
+ private:
+  std::deque<double> records_;
+  const int record_limit_;
+};
+
+// This method tries to compress a list of tuples by merging complementary
+// tuples, that is a set of tuples that only differ on one variable, and that
+// cover the domain of the variable. In that case, it will keep only one tuple,
+// and replace the value for variable by any_value, the equivalent of '*' in
+// regexps.
+//
+// This method is exposed for testing purposes.
+void CompressTuples(absl::Span<const int64> domain_sizes, int64 any_value,
+                    std::vector<std::vector<int64>>* tuples);
 
 }  // namespace sat
 }  // namespace operations_research

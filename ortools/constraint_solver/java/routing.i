@@ -1,4 +1,4 @@
-// Copyright 2010-2014 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,6 +14,8 @@
 // TODO(user): Refactor this file to adhere to the SWIG style guide.
 
 %include "ortools/constraint_solver/java/constraint_solver.i"
+%include "ortools/constraint_solver/java/routing_types.i"
+%include "ortools/constraint_solver/java/routing_index_manager.i"
 
 // We need to forward-declare the proto here, so that PROTO_INPUT involving it
 // works correctly. The order matters very much: this declaration needs to be
@@ -23,139 +25,203 @@ class RoutingModelParameters;
 class RoutingSearchParameters;
 }  // namespace operations_research
 
-// Include the file we want to wrap a first time.
+// Include the files we want to wrap a first time.
 %{
+#include "ortools/constraint_solver/routing_types.h"
+#include "ortools/constraint_solver/routing_parameters.pb.h"
+#include "ortools/constraint_solver/routing_parameters.h"
 #include "ortools/constraint_solver/routing.h"
+#include <memory>
 %}
 
-// Convert RoutingModel::NodeIndex to (32-bit signed) integers.
-%typemap(jni) operations_research::RoutingModel::NodeIndex "jint"
-%typemap(jtype) operations_research::RoutingModel::NodeIndex "int"
-%typemap(jstype) operations_research::RoutingModel::NodeIndex "int"
-%typemap(javain) operations_research::RoutingModel::NodeIndex "$javainput"
-%typemap(javaout) operations_research::RoutingModel::NodeIndex {
-  return $jnicall;
-}
-%typemap(in) operations_research::RoutingModel::NodeIndex {
-  $1 = operations_research::RoutingModel::NodeIndex($input);
-}
-%typemap(out) operations_research::RoutingModel::NodeIndex {
-  $result = (jlong)$1.value();
-}
-
-// Convert std::vector<RoutingModel::NodeIndex> to/from int arrays.
-VECTOR_AS_JAVA_ARRAY(operations_research::RoutingModel::NodeIndex, int, Int);
-
-// TODO(user): define a macro in util/java/vector.i for std::vector<std::vector<>> and
-// reuse it here.
-%typemap(jni) const std::vector<std::vector<operations_research::RoutingModel::NodeIndex> >& "jobjectArray"
-%typemap(jtype) const std::vector<std::vector<operations_research::RoutingModel::NodeIndex> >& "int[][]"
-%typemap(jstype) const std::vector<std::vector<operations_research::RoutingModel::NodeIndex> >& "int[][]"
-%typemap(javain) const std::vector<std::vector<operations_research::RoutingModel::NodeIndex> >& "$javainput"
-
-// Useful directors.
-%feature("director") NodeEvaluator2;
-
-%{
-#include <vector>
-#include "ortools/base/callback.h"
-#include "ortools/base/integral_types.h"
-
-// When a director is created for a class with SWIG, the C++ part of the
-// director keeps a JNI global reference to the Java part. This global reference
-// only gets deleted in the destructor of the C++ part, but by default, this
-// only happens when the Java part is processed by the GC (however, this never
-// happens, because there is the JNI global reference...).
-//
-// To break the cycle, it is necessary to delete the C++ part manually. For the
-// callback classes, this is done by deriving them from the respective C++
-// ResultCallback classes. When the java callback class is asked for a C++
-// callback class, it hands over its C++ part. It is expected, that whoever
-// receives the C++ callback class, owns it and destroys it after they no longer
-// need it. But by destroying it, they also break the reference cycle and the
-// Java part may be processed by the GC.
-//
-// When created, instances of NodeEvaluator2 must thus be used in a context
-// where someone takes ownership of the C++ part of the NodeEvaluator2 and
-// deletes it when no longer needed. Otherwise, the object would remain on the
-// heap forever.
-class NodeEvaluator2 : private operations_research::RoutingModel::NodeEvaluator2 {
- public:
-  NodeEvaluator2() : used_as_permanent_handler_(false) {}
-  virtual int64 run(int i, int j) = 0;
-  operations_research::RoutingModel::NodeEvaluator2* getPermanentCallback() {
-    CHECK(!used_as_permanent_handler_);
-    used_as_permanent_handler_ = true;
-    // The evaluator is wrapped to avoid having its ownership shared between
-    // jni/java and C++. C++ will take care of handling the wrapper while the
-    // actual evaluator will be handled by java. Refer to the typemap for
-    // NodeEvaluator2 below to see how this method is called.
-    return NewPermanentCallback(this, &NodeEvaluator2::Run);
-  }
-  virtual ~NodeEvaluator2() {}
-
- private:
-  virtual bool IsRepeatable() const { return true; }
-  virtual int64 Run(operations_research::RoutingModel::NodeIndex i,
-                    operations_research::RoutingModel::NodeIndex j) {
-    return run(i.value(), j.value());
-  }
-  bool used_as_permanent_handler_;
-};
-%}
-
-class NodeEvaluator2 : private operations_research::RoutingModel::NodeEvaluator2 {
- public:
-  NodeEvaluator2() : used_as_permanent_handler_(false) {}
-  virtual int64 run(int i, int j) = 0;
-  operations_research::RoutingModel::NodeEvaluator2* getPermanentCallback();
-  virtual ~NodeEvaluator2() {}
-};
-
-// Typemaps for callbacks in java.
-%typemap(jstype) operations_research::RoutingModel::NodeEvaluator2* "NodeEvaluator2";
-%typemap(javain) operations_research::RoutingModel::NodeEvaluator2* "$descriptor(ResultCallback2<int64, RoutingNodeIndex, RoutingNodeIndex>*).getCPtr($javainput.getPermanentCallback())";
+// RoutingModel methods.
+DEFINE_INDEX_TYPE_TYPEDEF(
+    operations_research::RoutingCostClassIndex,
+    operations_research::RoutingModel::CostClassIndex);
+DEFINE_INDEX_TYPE_TYPEDEF(
+    operations_research::RoutingDimensionIndex,
+    operations_research::RoutingModel::DimensionIndex);
+DEFINE_INDEX_TYPE_TYPEDEF(
+    operations_research::RoutingDisjunctionIndex,
+    operations_research::RoutingModel::DisjunctionIndex);
+DEFINE_INDEX_TYPE_TYPEDEF(
+    operations_research::RoutingVehicleClassIndex,
+    operations_research::RoutingModel::VehicleClassIndex);
 
 namespace operations_research {
-%define NODE_EVALUATOR_CAST(CType, ptr)
-reinterpret_cast<NodeEvaluator2*>(ptr)->getPermanentCallback()
-%enddef
 
-CONVERT_VECTOR_WITH_CAST(RoutingModel::NodeEvaluator2, NodeEvaluator2, NODE_EVALUATOR_CAST);
-}  // namespace operations_research
-
-%typemap(in) const std::vector<std::vector<operations_research::RoutingModel::NodeIndex> >&
-(std::vector<std::vector<operations_research::RoutingModel::NodeIndex> > temp) {
-  if ($input) {
-    const int size = jenv->GetArrayLength($input);
-    temp.clear();
-    temp.resize(size);
-    for (int i = 0; i < size; ++i) {
-      jintArray values =
-          (jintArray)jenv->GetObjectArrayElement((jobjectArray)$input, i);
-      const int inner_size = jenv->GetArrayLength(values);
-      jint* inner_values = jenv->GetIntArrayElements(values, nullptr);
-      for (int j = 0; j < inner_size; ++j) {
-        const int value = inner_values[j];
-        temp[i].push_back(operations_research::RoutingModel::NodeIndex(value));
-      }
-      jenv->ReleaseIntArrayElements(values, inner_values, 0);
-      jenv->DeleteLocalRef(values);
-    }
-    $1 = &temp;
-  } else {
-    SWIG_JavaThrowException(jenv, SWIG_JavaNullPointerException, "null table");
-    return $null;
-  }
-}
-
-%ignore operations_research::RoutingModel::AddMatrixDimension(
+// RoutingModel
+%unignore RoutingModel;
+// Map transit callback to Java @FunctionalInterface types.
+// This replaces the RoutingTransitCallback[1-2] in the Java proxy class
+%typemap(javaimports) RoutingModel %{
+// Used to wrap RoutingTransitCallback2
+// see https://docs.oracle.com/javase/8/docs/api/java/util/function/LongBinaryOperator.html
+import java.util.function.LongBinaryOperator;
+// Used to wrap RoutingTransitCallback1
+// see https://docs.oracle.com/javase/8/docs/api/java/util/function/LongUnaryOperator.html
+import java.util.function.LongUnaryOperator;
+%}
+%ignore RoutingModel::AddDimensionDependentDimensionWithVehicleCapacity;
+%ignore RoutingModel::AddHardTypeIncompatibility;
+%ignore RoutingModel::AddMatrixDimension(
     std::vector<std::vector<int64> > values,
     int64 capacity,
     bool fix_start_cumul_to_zero,
     const std::string& name);
-
-%extend operations_research::RoutingModel {
+%ignore RoutingModel::AddSameVehicleRequiredTypeAlternatives;
+%ignore RoutingModel::AddTemporalRequiredTypeAlternatives;
+%ignore RoutingModel::AddTemporalTypeIncompatibility;
+%ignore RoutingModel::CloseVisitTypes;
+%ignore RoutingModel::GetAllDimensionNames;
+%ignore RoutingModel::GetAutomaticFirstSolutionStrategy;
+%ignore RoutingModel::GetDeliveryIndexPairs;
+%ignore RoutingModel::GetDimensions;
+%ignore RoutingModel::GetDimensionsWithSoftAndSpanCosts;
+%ignore RoutingModel::GetDimensionsWithSoftOrSpanCosts;
+%ignore RoutingModel::GetGlobalDimensionCumulOptimizers;
+%ignore RoutingModel::GetHardTypeIncompatibilitiesOfType;
+%ignore RoutingModel::GetLocalDimensionCumulMPOptimizers;
+%ignore RoutingModel::GetLocalDimensionCumulOptimizers;
+%ignore RoutingModel::GetMutableGlobalCumulOptimizer;
+%ignore RoutingModel::GetMutableLocalCumulOptimizer;
+%ignore RoutingModel::GetMutableLocalCumulMPOptimizer;
+%ignore RoutingModel::GetNumberOfVisitTypes;
+%ignore RoutingModel::GetPerfectBinaryDisjunctions;
+%ignore RoutingModel::GetPickupIndexPairs;
+%ignore RoutingModel::GetSameVehicleRequiredTypeAlternativesOfType;
+%ignore RoutingModel::GetTemporalRequiredTypeAlternativesOfType;
+%ignore RoutingModel::GetTemporalTypeIncompatibilitiesOfType;
+%ignore RoutingModel::GetVisitType;
+%ignore RoutingModel::HasHardTypeIncompatibilities;
+%ignore RoutingModel::HasSameVehicleTypeRequirements;
+%ignore RoutingModel::HasTemporalTypeIncompatibilities;
+%ignore RoutingModel::HasTemporalTypeRequirements;
+%ignore RoutingModel::HasTypeRegulations;
+%ignore RoutingModel::MakeStateDependentTransit;
+%ignore RoutingModel::PackCumulsOfOptimizerDimensionsFromAssignment;
+%ignore RoutingModel::RegisterStateDependentTransitCallback;
+%ignore RoutingModel::RemainingTime;
+%ignore RoutingModel::SolveWithParameters(
+    const RoutingSearchParameters& search_parameters,
+    std::vector<const Assignment*>* solutions);
+%ignore RoutingModel::SolveFromAssignmentWithParameters(
+      const Assignment* assignment,
+      const RoutingSearchParameters& search_parameters,
+      std::vector<const Assignment*>* solutions);
+%ignore RoutingModel::TransitCallback;
+%ignore RoutingModel::SetVisitType;
+%ignore RoutingModel::StateDependentTransitCallback;
+%ignore RoutingModel::UnaryTransitCallbackOrNull;
+%rename (activeVar) RoutingModel::ActiveVar;
+%rename (addAllActive) RoutingModel::AddAllActive;
+%rename (addAtSolutionCallback) RoutingModel::AddAtSolutionCallback;
+%rename (addConstantDimension) RoutingModel::AddConstantDimension;
+%rename (addConstantDimensionWithSlack) RoutingModel::AddConstantDimensionWithSlack;
+%rename (addDimension) RoutingModel::AddDimension;
+%rename (addDimensionWithVehicleCapacity) RoutingModel::AddDimensionWithVehicleCapacity;
+%rename (addDimensionWithVehicleTransitAndCapacity) RoutingModel::AddDimensionWithVehicleTransitAndCapacity;
+%rename (addDimensionWithVehicleTransits) RoutingModel::AddDimensionWithVehicleTransits;
+%rename (addDisjunction) RoutingModel::AddDisjunction;
+%rename (addIntervalToAssignment) RoutingModel::AddIntervalToAssignment;
+%rename (addLocalSearchFilter) RoutingModel::AddLocalSearchFilter;
+%rename (addLocalSearchOperator) RoutingModel::AddLocalSearchOperator;
+%rename (addPickupAndDelivery) RoutingModel::AddPickupAndDelivery;
+%rename (addPickupAndDeliverySets) RoutingModel::AddPickupAndDeliverySets;
+%rename (addSearchMonitor) RoutingModel::AddSearchMonitor;
+%rename (addSoftSameVehicleConstraint) RoutingModel::AddSoftSameVehicleConstraint;
+%rename (addToAssignment) RoutingModel::AddToAssignment;
+%rename (addVariableMaximizedByFinalizer) RoutingModel::AddVariableMaximizedByFinalizer;
+%rename (addVariableMinimizedByFinalizer) RoutingModel::AddVariableMinimizedByFinalizer;
+%rename (addVectorDimension) RoutingModel::AddVectorDimension;
+%rename (applyLocks) RoutingModel::ApplyLocks;
+%rename (applyLocksToAllVehicles) RoutingModel::ApplyLocksToAllVehicles;
+%rename (arcIsMoreConstrainedThanArc) RoutingModel::ArcIsMoreConstrainedThanArc;
+%rename (assignmentToRoutes) RoutingModel::AssignmentToRoutes;
+%rename (checkLimit) RoutingModel::CheckLimit;
+%rename (closeModel) RoutingModel::CloseModel;
+%rename (closeModelWithParameters) RoutingModel::CloseModelWithParameters;
+%rename (compactAndCheckAssignment) RoutingModel::CompactAndCheckAssignment;
+%rename (compactAssignment) RoutingModel::CompactAssignment;
+%rename (computeLowerBound) RoutingModel::ComputeLowerBound;
+%rename (costVar) RoutingModel::CostVar;
+%rename (costsAreHomogeneousAcrossVehicles) RoutingModel::CostsAreHomogeneousAcrossVehicles;
+%rename (debugOutputAssignment) RoutingModel::DebugOutputAssignment;
+%rename (end) RoutingModel::End;
+%rename (getAmortizedLinearCostFactorOfVehicles) RoutingModel::GetAmortizedLinearCostFactorOfVehicles;
+%rename (getAmortizedQuadraticCostFactorOfVehicles) RoutingModel::GetAmortizedQuadraticCostFactorOfVehicles;
+%rename (getArcCostForClass) RoutingModel::GetArcCostForClass;
+%rename (getArcCostForFirstSolution) RoutingModel::GetArcCostForFirstSolution;
+%rename (getArcCostForVehicle) RoutingModel::GetArcCostForVehicle;
+%rename (getCostClassIndexOfVehicle) RoutingModel::GetCostClassIndexOfVehicle;
+%rename (getCostClassesCount) RoutingModel::GetCostClassesCount;
+%rename (getDepot) RoutingModel::GetDepot;
+%rename (getDimensionOrDie) RoutingModel::GetDimensionOrDie;
+%rename (getDisjunctionIndices) RoutingModel::GetDisjunctionIndices;
+%rename (getDisjunctionMaxCardinality) RoutingModel::GetDisjunctionMaxCardinality;
+%rename (getDisjunctionPenalty) RoutingModel::GetDisjunctionPenalty;
+%rename (getFixedCostOfVehicle) RoutingModel::GetFixedCostOfVehicle;
+%rename (getHomogeneousCost) RoutingModel::GetHomogeneousCost;
+%rename (getMutableDimension) RoutingModel::GetMutableDimension;
+%rename (getNonZeroCostClassesCount) RoutingModel::GetNonZeroCostClassesCount;
+%rename (getNumOfSingletonNodes) RoutingModel::GetNumOfSingletonNodes;
+%rename (getNumberOfDecisionsInFirstSolution) RoutingModel::GetNumberOfDecisionsInFirstSolution;
+%rename (getNumberOfDisjunctions) RoutingModel::GetNumberOfDisjunctions;
+%rename (getNumberOfRejectsInFirstSolution) RoutingModel::GetNumberOfRejectsInFirstSolution;
+%rename (getNumberOfVisitTypes) RoutingModel::GetNumberOfVisitTypes;
+%rename (getPickupAndDeliveryPolicyOfVehicle) RoutingModel::GetPickupAndDeliveryPolicyOfVehicle;
+%rename (getPrimaryConstrainedDimension) RoutingModel::GetPrimaryConstrainedDimension;
+%rename (getSameVehicleIndicesOfIndex) RoutingModel::GetSameVehicleIndicesOfIndex;
+%rename (getVehicleClassIndexOfVehicle) RoutingModel::GetVehicleClassIndexOfVehicle;
+%rename (getVehicleClassesCount) RoutingModel::GetVehicleClassesCount;
+%rename (getVisitType) RoutingModel::GetVisitType;
+%rename (hasDimension) RoutingModel::HasDimension;
+%rename (hasVehicleWithCostClassIndex) RoutingModel::HasVehicleWithCostClassIndex;
+%rename (ignoreDisjunctionsAlreadyForcedToZero) RoutingModel::IgnoreDisjunctionsAlreadyForcedToZero;
+%rename (isEnd) RoutingModel::IsEnd;
+%rename (isMatchingModel) RoutingModel::IsMatchingModel;
+%rename (isStart) RoutingModel::IsStart;
+%rename (isVehicleAllowedForIndex) RoutingModel::IsVehicleAllowedForIndex;
+%rename (isVehicleUsed) RoutingModel::IsVehicleUsed;
+%rename (makeGuidedSlackFinalizer) RoutingModel::MakeGuidedSlackFinalizer;
+%rename (makeSelfDependentDimensionFinalizer) RoutingModel::MakeSelfDependentDimensionFinalizer;
+%rename (mutablePreAssignment) RoutingModel::MutablePreAssignment;
+%rename (next) RoutingModel::Next;
+%rename (nextVar) RoutingModel::NextVar;
+%rename (nexts) RoutingModel::Nexts;
+%rename (preAssignment) RoutingModel::PreAssignment;
+%rename (readAssignment) RoutingModel::ReadAssignment;
+%rename (readAssignmentFromRoutes) RoutingModel::ReadAssignmentFromRoutes;
+%rename (registerPositiveTransitCallback) RoutingModel::RegisterPositiveTransitCallback;
+%rename (registerTransitCallback) RoutingModel::RegisterTransitCallback;
+%rename (registerUnaryTransitCallback) RoutingModel::RegisterUnaryTransitCallback;
+%rename (restoreAssignment) RoutingModel::RestoreAssignment;
+%rename (routesToAssignment) RoutingModel::RoutesToAssignment;
+%rename (setAllowedVehiclesForIndex) RoutingModel::SetAllowedVehiclesForIndex;
+%rename (setAmortizedCostFactorsOfAllVehicles) RoutingModel::SetAmortizedCostFactorsOfAllVehicles;
+%rename (setAmortizedCostFactorsOfVehicle) RoutingModel::SetAmortizedCostFactorsOfVehicle;
+%rename (setArcCostEvaluatorOfAllVehicles) RoutingModel::SetArcCostEvaluatorOfAllVehicles;
+%rename (setArcCostEvaluatorOfVehicle) RoutingModel::SetArcCostEvaluatorOfVehicle;
+%rename (setAssignmentFromOtherModelAssignment) RoutingModel::SetAssignmentFromOtherModelAssignment;
+%rename (setFirstSolutionEvaluator) RoutingModel::SetFirstSolutionEvaluator;
+%rename (setFixedCostOfAllVehicles) RoutingModel::SetFixedCostOfAllVehicles;
+%rename (setFixedCostOfVehicle) RoutingModel::SetFixedCostOfVehicle;
+%rename (setPickupAndDeliveryPolicyOfAllVehicles) RoutingModel::SetPickupAndDeliveryPolicyOfAllVehicles;
+%rename (setPickupAndDeliveryPolicyOfVehicle) RoutingModel::SetPickupAndDeliveryPolicyOfVehicle;
+%rename (setPrimaryConstrainedDimension) RoutingModel::SetPrimaryConstrainedDimension;
+%rename (setVisitType) RoutingModel::SetVisitType;
+%rename (size) RoutingModel::Size;
+%rename (solve) RoutingModel::Solve;
+%rename (solveFromAssignmentWithParameters) RoutingModel::SolveFromAssignmentWithParameters;
+%rename (solveWithParameters) RoutingModel::SolveWithParameters;
+%rename (start) RoutingModel::Start;
+%rename (unperformedPenalty) RoutingModel::UnperformedPenalty;
+%rename (unperformedPenaltyOrValue) RoutingModel::UnperformedPenaltyOrValue;
+%rename (vehicleVar) RoutingModel::VehicleVar;
+%rename (vehicleVars) RoutingModel::VehicleVars;
+%rename (writeAssignment) RoutingModel::WriteAssignment;
+// Extend:
+%extend RoutingModel {
   void addMatrixDimension(const std::vector<std::vector<int64> >& values,
                           int64 capacity, bool fix_start_cumul_to_zero,
                           const std::string& name) {
@@ -163,79 +229,63 @@ CONVERT_VECTOR_WITH_CAST(RoutingModel::NodeEvaluator2, NodeEvaluator2, NODE_EVAL
   }
 }
 
-%ignore operations_research::RoutingModel::MakeStateDependentTransit;
-%ignore operations_research::RoutingModel::AddDimensionDependentDimensionWithVehicleCapacity;
-%ignore operations_research::RoutingModel::RoutingModel(
-    int nodes, int vehicles,
-    const std::vector<std::pair<NodeIndex, NodeIndex> >& start_end);
+// RoutingDimension
+%unignore RoutingDimension;
+// Map transit callback to Java @FunctionalInterface types.
+// This replaces the RoutingTransitCallback[1-2] in the Java proxy class
+%typemap(javaimports) RoutingDimension %{
+// Used to wrap std::function<int64(int64 from_index, int64 to_index)> group_delay
+// see https://docs.oracle.com/javase/8/docs/api/java/util/function/LongBinaryOperator.html
+import java.util.function.LongBinaryOperator;
+%}
+%ignore RoutingDimension::GetBreakDistanceDurationOfVehicle;
+%rename (addNodePrecedence) RoutingDimension::AddNodePrecedence;
+%rename (cumulVar) RoutingDimension::CumulVar;
+%rename (fixedTransitVar) RoutingDimension::FixedTransitVar;
+%rename (getBreakIntervalsOfVehicle) RoutingDimension::GetBreakIntervalsOfVehicle;
+%rename (getCumulVarSoftLowerBound) RoutingDimension::GetCumulVarSoftLowerBound;
+%rename (getCumulVarSoftLowerBoundCoefficient) RoutingDimension::GetCumulVarSoftLowerBoundCoefficient;
+%rename (getCumulVarSoftUpperBound) RoutingDimension::GetCumulVarSoftUpperBound;
+%rename (getCumulVarSoftUpperBoundCoefficient) RoutingDimension::GetCumulVarSoftUpperBoundCoefficient;
+%rename (getGlobalSpanCostCoefficient) RoutingDimension::global_span_cost_coefficient;
+%rename (getGroupDelay) RoutingDimension::GetGroupDelay;
+%rename (getNodeVisitTransitsOfVehicle) RoutingDimension::GetNodeVisitTransitsOfVehicle;
+%rename (getSpanCostCoefficientForVehicle) RoutingDimension::GetSpanCostCoefficientForVehicle;
+%rename (getSpanUpperBoundForVehicle) RoutingDimension::GetSpanUpperBoundForVehicle;
+%rename (getTransitValue) RoutingDimension::GetTransitValue;
+%rename (getTransitValueFromClass) RoutingDimension::GetTransitValueFromClass;
+%rename (hasCumulVarSoftLowerBound) RoutingDimension::HasCumulVarSoftLowerBound;
+%rename (hasCumulVarSoftUpperBound) RoutingDimension::HasCumulVarSoftUpperBound;
+%rename (hasPickupToDeliveryLimits) RoutingDimension::HasPickupToDeliveryLimits;
+%rename (setBreakIntervalsOfVehicle) RoutingDimension::SetBreakIntervalsOfVehicle;
+%rename (setCumulVarSoftLowerBound) RoutingDimension::SetCumulVarSoftLowerBound;
+%rename (setCumulVarSoftUpperBound) RoutingDimension::SetCumulVarSoftUpperBound;
+%rename (setGlobalSpanCostCoefficient) RoutingDimension::SetGlobalSpanCostCoefficient;
+%rename (setPickupToDeliveryLimitFunctionForPair) RoutingDimension::SetPickupToDeliveryLimitFunctionForPair;
+%rename (setSpanCostCoefficientForAllVehicles) RoutingDimension::SetSpanCostCoefficientForAllVehicles;
+%rename (setSpanCostCoefficientForVehicle) RoutingDimension::SetSpanCostCoefficientForVehicle;
+%rename (setSpanUpperBoundForVehicle) RoutingDimension::SetSpanUpperBoundForVehicle;
+%rename (shortestTransitionSlack) RoutingDimension::ShortestTransitionSlack;
+%rename (slackVar) RoutingDimension::SlackVar;
+%rename (transitVar) RoutingDimension::TransitVar;
+%rename (vehicleHasBreakIntervals) RoutingDimension::VehicleHasBreakIntervals;
 
-// RoutingModel methods.
-%rename (solve) Solve;
-%rename (solveWithParameters) SolveWithParameters;
-%rename (solveFromAssignmentWithParameters) SolveFromAssignmentWithParameters;
-%rename (setArcCostEvaluatorOfAllVehicles) SetArcCostEvaluatorOfAllVehicles;
-%rename (setArcCostEvaluatorOfVehicle) SetArcCostEvaluatorOfVehicle;
-%rename (addDimension) AddDimension;
-%rename (addDimensionWithVehicleTransits) AddDimensionWithVehicleTransits;
-%rename (addDimensionWithVehicleCapacity) AddDimensionWithVehicleCapacity;
-%rename (addDimensionWithVehicleTransitAndCapacity) AddDimensionWithVehicleTransitAndCapacity;
-%rename (addConstantDimension) AddConstantDimension;
-%rename (addVectorDimension) AddVectorDimension;
-%rename (getDimensionOrDie) GetDimensionOrDie;
-%rename (getMutableDimension) GetMutableDimension;
-%rename (addAllActive) AddAllActive;
-%rename (addDisjunction) AddDisjunction;
-%rename (addLocalSearchOperator) AddLocalSearchOperator;
-%rename (addSearchMonitor) AddSearchMonitor;
-%rename (applyLocks) ApplyLocks;
-%rename (writeAssignment) WriteAssignment;
-%rename (readAssignment) ReadAssignment;
-%rename (nodeToIndex) NodeToIndex;
-%rename (indexToNode) IndexToNode;
-%rename (start) Start;
-%rename (end) End;
-%rename (isStart) IsStart;
-%rename (isEnd) IsEnd;
-%rename (getArcCostForVehicle) GetArcCostForVehicle;
-%rename (nexts) Nexts;
-%rename (nextVar) NextVar;
-%rename (vehicleVar) VehicleVar;
-%rename (vehicleVars) VehicleVars;
-%rename (activeVar) ActiveVar;
-%rename (addToAssignment) AddToAssignment;
-%rename (isVehicleUsed) IsVehicleUsed;
-%rename (next) Next;
-%rename (compactAssignment) CompactAssignment;
-%rename (size) Size;
-%rename (costVar) CostVar;
-%rename (preAssignment) PreAssignment;
-%rename (setFirstSolutionEvaluator) SetFirstSolutionEvaluator;
-%rename (routesToAssignment) RoutesToAssignment;
-%rename (closeModel) CloseModel;
-%rename (defaultSearchParameters) DefaultSearchParameters;
-%rename (defaultModelParameters) DefaultModelParameters;
+// RoutingFilteredDecisionBuilder
+%unignore RoutingFilteredDecisionBuilder;
+%rename (getEndChainStart) RoutingFilteredDecisionBuilder::GetEndChainStart;
+%rename (getStartChainEnd) RoutingFilteredDecisionBuilder::GetStartChainEnd;
+%rename (initializeRoutes) RoutingFilteredDecisionBuilder::InitializeRoutes;
+%rename (makeDisjunctionNodesUnperformed) RoutingFilteredDecisionBuilder::MakeDisjunctionNodesUnperformed;
+%rename (makeUnassignedNodesUnperformed) RoutingFilteredDecisionBuilder::MakeUnassignedNodesUnperformed;
 
-// RoutingDimension methods.
-%rename (cumulVar) CumulVar;
-%rename (transitVar) TransitVar;
-%rename (slackVar) SlackVar;
-%rename (setSpanCostCoefficientForAllVehicles) SetSpanCostCoefficientForAllVehicles;
-%rename (setSpanCostCoefficientForVehicle) SetSpanCostCoefficientForVehicle;
-%rename (getSpanCostCoefficientForVehicle) GetSpanCostCoefficientForVehicle;
-%rename (setGlobalSpanCostCoefficient) SetGlobalSpanCostCoefficient;
-%rename (getGlobalSpanCostCoefficient) global_span_cost_coefficient;
-%rename (setCumulVarSoftUpperBound) SetCumulVarSoftUpperBound;
-%rename (getCumulVarSoftUpperBound) GetCumulVarSoftUpperBound;
-%rename (getCumulVarSoftUpperBoundCoefficient) GetCumulVarSoftUpperBoundCoefficient;
+// TypeRegulationsChecker
+%unignore TypeRegulationsChecker;
+%ignore TypeRegulationsChecker::CheckVehicle;
 
-// DEPRECATED METHODS. See ./routing.h for how to replace them.
-%rename (setCost) SetCost;
-%rename (setVehicleCost) SetVehicleCost;
-%rename (setDimensionTransitCost) SetDimensionTransitCost;
-%rename (getDimensionTransitCost) GetDimensionTransitCost;
-%rename (setDimensionSpanCost) SetDimensionSpanCost;
-%rename (getDimensionSpanCost) GetDimensionSpanCost;
+}  // namespace operations_research
 
+// Generic rename rules.
+%rename (buildSolution) *::BuildSolution;
 
 // Protobuf support
 PROTO_INPUT(operations_research::RoutingSearchParameters,
@@ -249,18 +299,26 @@ PROTO2_RETURN(operations_research::RoutingSearchParameters,
 PROTO2_RETURN(operations_research::RoutingModelParameters,
               com.google.ortools.constraintsolver.RoutingModelParameters)
 
+// Wrap routing_types.h, routing_parameters.h according to the SWIG styleguide.
 %ignoreall
-%unignore RoutingNodeIndex;
-%unignore RoutingCostClassIndex;
-%unignore RoutingDimensionIndex;
-%unignore RoutingDisjunctionIndex;
-%unignore RoutingVehicleClassIndex;
-%unignore RoutingNodeEvaluator2;
-%unignore RoutingTransitEvaluator2;
-%unignore RoutingNodePair;
-%unignore RoutingNodePairs;
+%unignore RoutingTransitCallback1;
+%unignore RoutingTransitCallback2;
+%unignore RoutingIndexPair;
+%unignore RoutingIndexPairs;
+
+namespace operations_research {
+// IMPORTANT(viger): These functions from routing_parameters.h are global, so in
+// java they are in the main.java (import com.[...].constraintsolver.main).
+%rename (defaultRoutingSearchParameters) DefaultRoutingSearchParameters;
+%rename (defaultRoutingModelParameters) DefaultRoutingModelParameters;
+%rename (findErrorInRoutingSearchParameters) FindErrorInRoutingSearchParameters;
+%rename (makeSetValuesFromTargets) MakeSetValuesFromTargets;
+}  // namespace operations_research
+
 %include "ortools/constraint_solver/routing_types.h"
+%include "ortools/constraint_solver/routing_parameters.h"
 %unignoreall
 
 // TODO(user): Use ignoreall/unignoreall for this one. A lot of work.
+//swiglint: disable include-h-allglobals
 %include "ortools/constraint_solver/routing.h"

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -75,10 +75,10 @@ class PortfolioOptimizer : public BopOptimizerBase {
  private:
   BopOptimizerBase::Status SynchronizeIfNeeded(
       const ProblemState& problem_state);
-  void AddOptimizer(const LinearBooleanProblem& problem,
+  void AddOptimizer(const sat::LinearBooleanProblem& problem,
                     const BopParameters& parameters,
                     const BopOptimizerMethod& optimizer_method);
-  void CreateOptimizers(const LinearBooleanProblem& problem,
+  void CreateOptimizers(const sat::LinearBooleanProblem& problem,
                         const BopParameters& parameters,
                         const BopSolverOptimizerSet& optimizer_set);
 
@@ -99,7 +99,7 @@ class PortfolioOptimizer : public BopOptimizerBase {
 class OptimizerSelector {
  public:
   // Note that the list of optimizers is only used to get the names for
-  // debug purposes, the ownership of the optimizers is not transfered.
+  // debug purposes, the ownership of the optimizers is not transferred.
   explicit OptimizerSelector(
       const gtl::ITIVector<OptimizerIndex, BopOptimizerBase*>& optimizers);
 
@@ -127,7 +127,7 @@ class OptimizerSelector {
   // solution.
   //
   // The time spent corresponds to the time the optimizer spent; To make the
-  // behavior deterministic, it is recommanded to use the deterministic time
+  // behavior deterministic, it is recommended to use the deterministic time
   // instead of the elapsed time.
   //
   // The optimizers are sorted based on their score each time a new solution is
@@ -145,7 +145,7 @@ class OptimizerSelector {
   // TODO(user): Maybe we should simply have the notion of selectability here
   // and let the client handle the logic to decide what optimizer are selectable
   // or not.
-  void SetOptimizerRunnability(OptimizerIndex optimizer_index, bool runable);
+  void SetOptimizerRunnability(OptimizerIndex optimizer_index, bool runnable);
 
   // Returns statistics about the given optimizer.
   std::string PrintStats(OptimizerIndex optimizer_index) const;

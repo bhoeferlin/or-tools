@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -44,8 +44,9 @@ namespace glop {
 class InitialBasis {
  public:
   // Takes references to the linear program data we need.
-  InitialBasis(const MatrixView& matrix, const DenseRow& objective,
-               const DenseRow& lower_bound, const DenseRow& upper_bound,
+  InitialBasis(const CompactSparseMatrix& compact_matrix,
+               const DenseRow& objective, const DenseRow& lower_bound,
+               const DenseRow& upper_bound,
                const VariableTypeRow& variable_type);
 
   // Completes the entries of the given basis that are equal to kInvalidCol with
@@ -62,24 +63,36 @@ class InitialBasis {
   //
   // Returns false if an error occurred during the algorithm (numerically
   // instable basis).
-  bool CompleteTriangularPrimalBasis(ColIndex num_cols, RowToColMapping* basis);
-  bool CompleteTriangularDualBasis(ColIndex num_cols, RowToColMapping* basis);
+  void CompleteTriangularPrimalBasis(ColIndex num_cols, RowToColMapping* basis);
+  void CompleteTriangularDualBasis(ColIndex num_cols, RowToColMapping* basis);
+
+  // Use Maros's LTSF crash from the book "Computational Techniques of the
+  // Simplex Method". Unlike the other crashes this does not use the initial
+  // content of the basis parameter.
+  void GetPrimalMarosBasis(ColIndex num_cols, RowToColMapping* basis);
+  void GetDualMarosBasis(ColIndex num_cols, RowToColMapping* basis);
 
   // Visible for testing. Computes a list of candidate column indices out of the
   // fist num_candidate_columns of A and sorts them using the
   // bixby_column_comparator_. This also fills max_scaled_abs_cost_.
-  void ComputeCandidates(ColIndex num_candidate_columns,
-                         std::vector<ColIndex>* candidates);
+  void ComputeCandidates(ColIndex num_cols, std::vector<ColIndex>* candidates);
 
  private:
   // Internal implementation of the Primal/Dual CompleteTriangularBasis().
   template <bool only_allow_zero_cost_column>
-  bool CompleteTriangularBasis(ColIndex num_cols, RowToColMapping* basis);
+  void CompleteTriangularBasis(ColIndex num_cols, RowToColMapping* basis);
+
+  template <bool only_allow_zero_cost_column>
+  void GetMarosBasis(ColIndex num_cols, RowToColMapping* basis);
 
   // Returns an integer representing the order (the lower the better)
   // between column categories (known as C2, C3 or C4 in the paper).
   // Also returns a greater index for fixed columns.
   int GetColumnCategory(ColIndex col) const;
+
+  // Row and column priorities for Maros crash.
+  int GetMarosPriority(RowIndex row) const;
+  int GetMarosPriority(ColIndex col) const;
 
   // Returns the penalty (the lower the better) of a column. This is 'q_j' for a
   // column 'j' in the paper.
@@ -107,7 +120,7 @@ class InitialBasis {
     const InitialBasis& initial_basis_;
   } triangular_column_comparator_;
 
-  const MatrixView& matrix_;
+  const CompactSparseMatrix& compact_matrix_;
   const DenseRow& objective_;
   const DenseRow& lower_bound_;
   const DenseRow& upper_bound_;

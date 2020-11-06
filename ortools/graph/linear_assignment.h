@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -204,11 +204,11 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ortools/base/commandlineflags.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/graph/ebert_graph.h"
 #include "ortools/util/permutation.h"
 #include "ortools/util/zvector.h"
@@ -392,8 +392,8 @@ class LinearSumAssignment {
     }
     std::string StatsString() const {
       return absl::StrFormat(
-          "%lld refinements; %lld relabelings; "
-          "%lld double pushes; %lld pushes",
+          "%d refinements; %d relabelings; "
+          "%d double pushes; %d pushes",
           refinements_, relabelings_, double_pushes_, pushes_);
     }
     int64 pushes_;
@@ -790,7 +790,7 @@ class LinearSumAssignment {
   //
   // Proof: Suppose the price decrease of every node in the iteration
   // with epsilon_ == x is bounded by B(x) which is proportional to x
-  // (not surpisingly, this will be the same function B() as
+  // (not surprisingly, this will be the same function B() as
   // above). Assume for simplicity that C, the largest cost magnitude,
   // is a power of alpha. Then the price of each node, tallied across
   // all iterations is bounded

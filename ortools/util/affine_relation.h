@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -84,15 +84,34 @@ class AffineRelation {
              offset == other.offset;
     }
   };
-  Relation Get(int x);
+  Relation Get(int x) const;
+
+  // Advanced usage. This is a bit hacky and will just decrease the class size
+  // of a variable without any extra checks. Use with care. In particular when
+  // this is called, then x should never be used anymore in any of the non const
+  // calls of this class.
+  void IgnoreFromClassSize(int x) {
+    if (x >= size_.size()) return;  // never seen here.
+    CHECK_NE(size_[x], kSizeForRemovedEntry) << x;
+    const int r = Get(x).representative;
+    if (r != x) {
+      CHECK_GT(size_[r], 1);
+      size_[r]--;
+    } else {
+      CHECK_EQ(size_[r], 1);
+    }
+    size_[x] = kSizeForRemovedEntry;
+  }
 
   // Returns the size of the class of x.
-  int ClassSize(int x) {
+  int ClassSize(int x) const {
     if (x >= representative_.size()) return 1;
     return size_[Get(x).representative];
   }
 
  private:
+  const int kSizeForRemovedEntry = 0;
+
   void IncreaseSizeOfMemberVectors(int new_size) {
     if (new_size <= representative_.size()) return;
     for (int i = representative_.size(); i < new_size; ++i) {
@@ -103,7 +122,7 @@ class AffineRelation {
     size_.resize(new_size, 1);
   }
 
-  void CompressPath(int x) {
+  void CompressPath(int x) const {
     DCHECK_GE(x, 0);
     DCHECK_LT(x, representative_.size());
     tmp_path_.clear();
@@ -123,12 +142,12 @@ class AffineRelation {
   int num_relations_;
 
   // The equivalence class representative for each variable index.
-  std::vector<int> representative_;
+  mutable std::vector<int> representative_;
 
   // The offset and coefficient such that
   // variable[index] = coeff * variable[representative_[index]] + offset;
-  std::vector<int64> coeff_;
-  std::vector<int64> offset_;
+  mutable std::vector<int64> coeff_;
+  mutable std::vector<int64> offset_;
 
   // The size of each representative "tree", used to get a good complexity when
   // we have the choice of which tree to merge into the other.
@@ -139,7 +158,7 @@ class AffineRelation {
   std::vector<int> size_;
 
   // Used by CompressPath() to maintain the coeff/offset during compression.
-  std::vector<int> tmp_path_;
+  mutable std::vector<int> tmp_path_;
 };
 
 inline bool AffineRelation::TryAdd(int x, int y, int64 coeff, int64 offset) {
@@ -153,6 +172,8 @@ inline bool AffineRelation::TryAdd(int x, int y, int64 coeff, int64 offset,
   CHECK_GE(x, 0);
   CHECK_GE(y, 0);
   IncreaseSizeOfMemberVectors(std::max(x, y) + 1);
+  CHECK_NE(size_[x], kSizeForRemovedEntry) << x;
+  CHECK_NE(size_[y], kSizeForRemovedEntry) << y;
   CompressPath(x);
   CompressPath(y);
   const int rep_x = representative_[x];
@@ -186,7 +207,7 @@ inline bool AffineRelation::TryAdd(int x, int y, int64 coeff, int64 offset,
   return true;
 }
 
-inline AffineRelation::Relation AffineRelation::Get(int x) {
+inline AffineRelation::Relation AffineRelation::Get(int x) const {
   if (x >= representative_.size() || representative_[x] == x) return {x, 1, 0};
   CompressPath(x);
   return {representative_[x], coeff_[x], offset_[x]};

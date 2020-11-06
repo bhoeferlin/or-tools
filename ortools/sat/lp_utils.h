@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -20,24 +20,56 @@
 #include "ortools/lp_data/lp_data.h"
 #include "ortools/sat/boolean_problem.pb.h"
 #include "ortools/sat/cp_model.pb.h"
+#include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/sat/sat_solver.h"
 
 namespace operations_research {
 namespace sat {
 
+// Returns the smallest factor f such that f * abs(x) is integer modulo the
+// given tolerance relative to f (we use f * tolerance). It is only looking
+// for f smaller than the given limit. Returns zero if no such factor exist.
+//
+// The complexity is a lot less than O(limit), but it is possible that we might
+// miss the smallest such factor if the tolerance used is too low. This is
+// because we only rely on the best rational approximations of x with increasing
+// denominator.
+int FindRationalFactor(double x, int limit = 1e4, double tolerance = 1e-6);
+
+// Multiplies all continuous variable by the given scaling parameters and change
+// the rest of the model accordingly. The returned vector contains the scaling
+// of each variable (will always be 1.0 for integers) and can be used to recover
+// a solution of the unscaled problem from one of the new scaled problems by
+// dividing the variable values.
+//
+// We usually scale a continuous variable by scaling, but if its domain is going
+// to have larger values than max_bound, then we scale to have the max domain
+// magnitude equal to max_bound.
+//
+// Note that it is recommended to call DetectImpliedIntegers() before this
+// function so that we do not scale variables that do not need to be scaled.
+//
+// TODO(user): Also scale the solution hint if any.
+std::vector<double> ScaleContinuousVariables(double scaling, double max_bound,
+                                             MPModelProto* mp_model);
+
+// This will mark implied integer as such. Note that it can also discover
+// variable of the form coeff * Integer + offset, and will change the model
+// so that these are marked as integer. It is why we return both a scaling and
+// an offset to transform the solution back to its original domain.
+//
+// TODO(user): Actually implement the offset part. This currently only happens
+// on the 3 neos-46470* miplib problems where we have a non-integer rhs.
+std::vector<double> DetectImpliedIntegers(bool log_info,
+                                          MPModelProto* mp_model);
+
 // Converts a MIP problem to a CpModel. Returns false if the coefficients
 // couldn't be converted to integers with a good enough precision.
 //
-// Caveats:
-//   - We do not support bound larger than or equal to 2^30.
-//   - We cap unbounded variable at 2^30.
-//   - Non-integer variable must have integer bounds.
-//   - We do not scale the variable bounds, so by assuming that a non-integer
-//     variable is integer, we may change the problem significantly if the
-//     domain is small (like [0.0, 1.0]).
-//
-// TODO(user): Try to remove some of the restrictions.
-bool ConvertMPModelProtoToCpModelProto(const MPModelProto& mp_model,
+// There is a bunch of caveats and you can find more details on the
+// SatParameters proto documentation for the mip_* parameters.
+bool ConvertMPModelProtoToCpModelProto(const SatParameters& params,
+                                       const MPModelProto& mp_model,
                                        CpModelProto* cp_model);
 
 // Converts an integer program with only binary variables to a Boolean

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -26,5 +26,9 @@
 
 #define QCHECK CHECK
 #define ABSL_DIE_IF_NULL CHECK_NOTNULL
+#define CHECK_OK(x) CHECK((x).ok())
+
+// used by or-tools non C++ ports to bridge with the C++ layer.
+void FixFlagsAndEnvironmentForSwig();
 
 #endif  // OR_TOOLS_BASE_LOGGING_H_

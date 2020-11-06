@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,8 +16,8 @@
 
 #include <string>
 
+#include "absl/synchronization/mutex.h"
 #include "ortools/base/basictypes.h"
-#include "ortools/base/mutex.h"
 #include "ortools/bop/bop_parameters.pb.h"
 #include "ortools/bop/bop_solution.h"
 #include "ortools/lp_data/lp_types.h"
@@ -91,7 +91,7 @@ class BopOptimizerBase {
                           const ProblemState& problem_state,
                           LearnedInfo* learned_info, TimeLimit* time_limit) = 0;
 
-  // Returns a std::string describing the status.
+  // Returns a string describing the status.
   static std::string GetStatusString(Status status);
 
  protected:
@@ -110,7 +110,7 @@ inline std::ostream& operator<<(std::ostream& os,
 // information that the solver learned about it at a given time.
 class ProblemState {
  public:
-  explicit ProblemState(const LinearBooleanProblem& problem);
+  explicit ProblemState(const sat::LinearBooleanProblem& problem);
 
   // Sets parameters, used for instance to get the tolerance, the gap limit...
   void SetParameters(const BopParameters& parameters) {
@@ -195,7 +195,7 @@ class ProblemState {
   // Returns the original problem. Note that the current problem might be
   // different, e.g. fixed variables, but equivalent, i.e. a solution to one
   // should be a solution to the other too.
-  const LinearBooleanProblem& original_problem() const {
+  const sat::LinearBooleanProblem& original_problem() const {
     return original_problem_;
   }
 
@@ -220,7 +220,7 @@ class ProblemState {
   void SynchronizationDone();
 
  private:
-  const LinearBooleanProblem& original_problem_;
+  const sat::LinearBooleanProblem& original_problem_;
   BopParameters parameters_;
   int64 update_stamp_;
   gtl::ITIVector<VariableIndex, bool> is_fixed_;
@@ -243,7 +243,7 @@ class ProblemState {
 // with the problem state in order to get a more constrained problem to be used
 // by the next called optimizer.
 struct LearnedInfo {
-  explicit LearnedInfo(const LinearBooleanProblem& problem)
+  explicit LearnedInfo(const sat::LinearBooleanProblem& problem)
       : fixed_literals(),
         solution(problem, "AllZero"),
         lower_bound(kint64min),

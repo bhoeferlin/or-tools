@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -24,18 +24,25 @@ namespace operations_research {
 namespace sat {
 
 // Verifies that the given model satisfies all the properties described in the
-// proto comments. Returns an empty std::string if it is the case, otherwise
-// fails at the first error and returns a human-readable description of the
-// issue.
+// proto comments. Returns an empty string if it is the case, otherwise fails at
+// the first error and returns a human-readable description of the issue.
 //
-// TODO(user): Add any needed overflow validation.
+// TODO(user): Add any needed overflow validation because we are far from
+// exhaustive. We could also run a small presolve that tighten variable bounds
+// before the overflow check to facilitate the lives of our users, but it is a
+// some work to put in place.
 std::string ValidateCpModel(const CpModelProto& model);
 
 // Verifies that the given variable assignment is a feasible solution of the
 // given model. The values vector should be in one to one correspondence with
 // the model.variables() list of variables.
+//
+// The last two arguments are optional and help debugging a failing constraint
+// due to presolve.
 bool SolutionIsFeasible(const CpModelProto& model,
-                        const std::vector<int64>& variable_values);
+                        const std::vector<int64>& variable_values,
+                        const CpModelProto* mapping_proto = nullptr,
+                        const std::vector<int>* postsolve_mapping = nullptr);
 
 }  // namespace sat
 }  // namespace operations_research

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -24,12 +24,12 @@
 #include <set>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "ortools/base/adjustable_priority_queue.h"
 #include "ortools/base/int_type.h"
 #include "ortools/base/int_type_indexed_vector.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/macros.h"
-#include "ortools/base/span.h"
 #include "ortools/sat/drat_proof_handler.h"
 #include "ortools/sat/sat_base.h"
 #include "ortools/sat/sat_parameters.pb.h"
@@ -51,7 +51,7 @@ class SatPostsolver {
   // The postsolver will process the Add() calls in reverse order. If the given
   // clause has all its literals at false, it simply sets the literal x to true.
   // Note that x must be a literal of the given clause.
-  void Add(Literal x, const absl::Span<Literal> clause);
+  void Add(Literal x, const absl::Span<const Literal> clause);
 
   // Tells the postsolver that the given literal must be true in any solution.
   // We currently check that the variable is not already fixed.
@@ -79,6 +79,7 @@ class SatPostsolver {
   std::vector<bool> PostsolveSolution(const std::vector<bool>& solution);
 
   // Getters to the clauses managed by this class.
+  // Important: This will always put the associated literal first.
   int NumClauses() const { return clauses_start_.size(); }
   std::vector<Literal> Clause(int i) const {
     // TODO(user): we could avoid the copy here, but because clauses_literals_
@@ -87,8 +88,15 @@ class SatPostsolver {
     const int begin = clauses_start_[i];
     const int end = i + 1 < clauses_start_.size() ? clauses_start_[i + 1]
                                                   : clauses_literals_.size();
-    return std::vector<Literal>(clauses_literals_.begin() + begin,
+    std::vector<Literal> result(clauses_literals_.begin() + begin,
                                 clauses_literals_.begin() + end);
+    for (int j = 0; j < result.size(); ++j) {
+      if (result[j] == associated_literal_[i]) {
+        std::swap(result[0], result[j]);
+        break;
+      }
+    }
+    return result;
   }
 
  private:
@@ -134,15 +142,16 @@ class SatPostsolver {
 // appearing in pseudo-Boolean constraints.
 class SatPresolver {
  public:
-  // TODO(user): use IntType? not sure because that complexify the code, and
-  // it is not really needed here.
+  // TODO(user): use IntType!
   typedef int32 ClauseIndex;
 
   explicit SatPresolver(SatPostsolver* postsolver)
       : postsolver_(postsolver),
         num_trivial_clauses_(0),
         drat_proof_handler_(nullptr) {}
+
   void SetParameters(const SatParameters& params) { parameters_ = params; }
+  void SetTimeLimit(TimeLimit* time_limit) { time_limit_ = time_limit; }
 
   // Registers a mapping to encode equivalent literals.
   // See ProbeAndFindEquivalentLiteral().
@@ -154,7 +163,7 @@ class SatPresolver {
   // Adds new clause to the SatPresolver.
   void SetNumVariables(int num_variables);
   void AddBinaryClause(Literal a, Literal b);
-  void AddClause(absl::Span<Literal> clause);
+  void AddClause(absl::Span<const Literal> clause);
 
   // Presolves the problem currently loaded. Returns false if the model is
   // proven to be UNSAT during the presolving.
@@ -165,7 +174,8 @@ class SatPresolver {
 
   // Same as Presolve() but only allow to remove BooleanVariable whose index
   // is set to true in the given vector.
-  bool Presolve(const std::vector<bool>& var_that_can_be_removed);
+  bool Presolve(const std::vector<bool>& var_that_can_be_removed,
+                bool log_info = false);
 
   // All the clauses managed by this class.
   // Note that deleted clauses keep their indices (they are just empty).
@@ -214,6 +224,10 @@ class SatPresolver {
   }
 
  private:
+  // Internal function used by ProcessClauseToSimplifyOthers().
+  bool ProcessClauseToSimplifyOthersUsingLiteral(ClauseIndex clause_index,
+                                                 Literal lit);
+
   // Internal function to add clauses generated during the presolve. The clause
   // must already be sorted with the default Literal order and will be cleared
   // after this call.
@@ -252,6 +266,11 @@ class SatPresolver {
   // Display some statistics on the current clause database.
   void DisplayStats(double elapsed_seconds);
 
+  // Returns a hash of the given clause variables (not literal) in such a way
+  // that hash1 & not(hash2) == 0 iff the set of variable of clause 1 is a
+  // subset of the one of clause2.
+  uint64 ComputeSignatureOfClauseVariables(ClauseIndex ci);
+
   // The "active" variables on which we want to call CrossProduct() are kept
   // in a priority queue so that we process first the ones that occur the least
   // often in the clause database.
@@ -280,8 +299,8 @@ class SatPresolver {
   // Literal priority queue for BVA. The literals are ordered by descending
   // number of occurrences in clauses.
   void InitializeBvaPriorityQueue();
-  void UpdateBvaPriorityQueue(LiteralIndex var);
-  void AddToBvaPriorityQueue(LiteralIndex var);
+  void UpdateBvaPriorityQueue(LiteralIndex lit);
+  void AddToBvaPriorityQueue(LiteralIndex lit);
   struct BvaPqElement {
     BvaPqElement() : heap_index(-1), literal(-1), weight(0.0) {}
 
@@ -318,6 +337,11 @@ class SatPresolver {
   // An empty clause means that it has been removed.
   std::vector<std::vector<Literal>> clauses_;  // Indexed by ClauseIndex
 
+  // The cached value of ComputeSignatureOfClauseVariables() for each clause.
+  std::vector<uint64> signatures_;  // Indexed by ClauseIndex
+  int64 num_inspected_signatures_ = 0;
+  int64 num_inspected_literals_ = 0;
+
   // Occurrence list. For each literal, contains the ClauseIndex of the clause
   // that contains it (ordered by clause index).
   gtl::ITIVector<LiteralIndex, std::vector<ClauseIndex>> literal_to_clauses_;
@@ -335,6 +359,7 @@ class SatPresolver {
   int num_trivial_clauses_;
   SatParameters parameters_;
   DratProofHandler* drat_proof_handler_;
+  TimeLimit* time_limit_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(SatPresolver);
 };
@@ -346,8 +371,15 @@ class SatPresolver {
 //   the clause a with one of its literal negated is a subset of b, in which
 //   case opposite_literal is set to this negated literal index. Moreover, this
 //   opposite_literal is then removed from b.
+//
+// If num_inspected_literals_ is not nullptr, the "complexity" of this function
+// will be added to it in order to track the amount of work done.
+//
+// TODO(user): when a.size() << b.size(), we should use binary search instead
+// of scanning b linearly.
 bool SimplifyClause(const std::vector<Literal>& a, std::vector<Literal>* b,
-                    LiteralIndex* opposite_literal);
+                    LiteralIndex* opposite_literal,
+                    int64* num_inspected_literals = nullptr);
 
 // Visible for testing. Returns kNoLiteralIndex except if:
 // - a and b differ in only one literal.

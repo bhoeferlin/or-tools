@@ -19,14 +19,14 @@ void SolveLP() {
 }
 
 void BreakLoop() {
-  for (int i = 0; i < 50000; i++) {
+  for (int i = 0; i < 500; i++) {
     SolveLP();
   }
 }
 }  // namespace operations_research
 
 int main(int argc, char** argv) {
-  gflags::ParseCommandLineFlags( &argc, &argv, true);
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
   operations_research::BreakLoop();
   return 0;
 }

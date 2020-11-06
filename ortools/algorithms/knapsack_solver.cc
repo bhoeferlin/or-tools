@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "ortools/base/stl_util.h"
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/util/bitset.h"
@@ -78,7 +79,7 @@ inline bool WillProductOverflow(int64 value_1, int64 value_2) {
 // Returns an upper bound of (numerator_1 * numerator_2) / denominator
 int64 UpperBoundOfRatio(int64 numerator_1, int64 numerator_2,
                         int64 denominator) {
-  DCHECK_GT(denominator, 0LL);
+  DCHECK_GT(denominator, int64{0});
   if (!WillProductOverflow(numerator_1, numerator_2)) {
     const int64 numerator = numerator_1 * numerator_2;
     // Round to zero.
@@ -983,7 +984,7 @@ int64 KnapsackDynamicProgrammingSolver::SolveSubProblem(int64 capacity,
                                                         int num_items) {
   const int64 capacity_plus_1 = capacity + 1;
   std::fill_n(selected_item_ids_.begin(), capacity_plus_1, 0);
-  std::fill_n(computed_profits_.begin(), capacity_plus_1, 0LL);
+  std::fill_n(computed_profits_.begin(), capacity_plus_1, int64{0});
   for (int item_id = 0; item_id < num_items; ++item_id) {
     const int64 item_weight = weights_[item_id];
     const int64 item_profit = profits_[item_id];
@@ -1081,6 +1082,9 @@ int64 KnapsackMIPSolver::Solve(TimeLimit* time_limit,
 
   // Add constraints.
   const int num_dimensions = capacities_.size();
+  CHECK(weights_.size() == num_dimensions)
+      << "Weights should be vector of num_dimensions (" << num_dimensions
+      << ") vectors of size num_items (" << num_items << ").";
   for (int i = 0; i < num_dimensions; ++i) {
     MPConstraint* const ct = solver.MakeRowConstraint(0LL, capacities_.at(i));
     for (int j = 0; j < num_items; ++j) {
@@ -1128,29 +1132,42 @@ KnapsackSolver::KnapsackSolver(SolverType solver_type,
       time_limit_seconds_(std::numeric_limits<double>::infinity()) {
   switch (solver_type) {
     case KNAPSACK_BRUTE_FORCE_SOLVER:
-      solver_.reset(new KnapsackBruteForceSolver(solver_name));
+      solver_ = absl::make_unique<KnapsackBruteForceSolver>(solver_name);
       break;
     case KNAPSACK_64ITEMS_SOLVER:
-      solver_.reset(new Knapsack64ItemsSolver(solver_name));
+      solver_ = absl::make_unique<Knapsack64ItemsSolver>(solver_name);
       break;
     case KNAPSACK_DYNAMIC_PROGRAMMING_SOLVER:
-      solver_.reset(new KnapsackDynamicProgrammingSolver(solver_name));
+      solver_ =
+          absl::make_unique<KnapsackDynamicProgrammingSolver>(solver_name);
       break;
     case KNAPSACK_MULTIDIMENSION_BRANCH_AND_BOUND_SOLVER:
-      solver_.reset(new KnapsackGenericSolver(solver_name));
+      solver_ = absl::make_unique<KnapsackGenericSolver>(solver_name);
       break;
 #if defined(USE_CBC)
     case KNAPSACK_MULTIDIMENSION_CBC_MIP_SOLVER:
-      solver_.reset(new KnapsackMIPSolver(
-          MPSolver::CBC_MIXED_INTEGER_PROGRAMMING, solver_name));
+      solver_ = absl::make_unique<KnapsackMIPSolver>(
+          MPSolver::CBC_MIXED_INTEGER_PROGRAMMING, solver_name);
       break;
 #endif  // USE_CBC
 #if defined(USE_SCIP)
     case KNAPSACK_MULTIDIMENSION_SCIP_MIP_SOLVER:
-      solver_.reset(new KnapsackMIPSolver(
-          MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING, solver_name));
+      solver_ = absl::make_unique<KnapsackMIPSolver>(
+          MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING, solver_name);
       break;
 #endif  // USE_SCIP
+#if defined(USE_XPRESS)
+    case KNAPSACK_MULTIDIMENSION_XPRESS_MIP_SOLVER:
+      solver_ = absl::make_unique<KnapsackMIPSolver>(
+          MPSolver::XPRESS_MIXED_INTEGER_PROGRAMMING, solver_name);
+      break;
+#endif
+#if defined(USE_CPLEX)
+    case KNAPSACK_MULTIDIMENSION_CPLEX_MIP_SOLVER:
+      solver_ = absl::make_unique<KnapsackMIPSolver>(
+          MPSolver::CPLEX_MIXED_INTEGER_PROGRAMMING, solver_name);
+      break;
+#endif
     default:
       LOG(FATAL) << "Unknown knapsack solver type.";
   }
@@ -1161,7 +1178,7 @@ KnapsackSolver::~KnapsackSolver() {}
 void KnapsackSolver::Init(const std::vector<int64>& profits,
                           const std::vector<std::vector<int64>>& weights,
                           const std::vector<int64>& capacities) {
-  time_limit_.reset(new TimeLimit(time_limit_seconds_));
+  time_limit_ = absl::make_unique<TimeLimit>(time_limit_seconds_);
   is_solution_optimal_ = false;
   additional_profit_ = 0LL;
   is_problem_solved_ = false;

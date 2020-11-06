@@ -1,16 +1,14 @@
 Makefile.local
-CMakeLists.txt.user
 
 dependencies/archives/
-!dependencies/archives/autoconf.patch
-!dependencies/archives/patchelf-0.8.tar.gz
 
 dependencies/install/
 dependencies/sources/
-
+dependencies/check.log
 
 or-tools*.tar.gz
 or-tools*.zip
+*.snk
 *.a
 *.o
 *.so
@@ -22,60 +20,36 @@ or-tools*.zip
 *.swp
 
 build.log
-bin/
+test.log
+publish.log
 ortools/gen/
 objs/
 classes/
+packages/
 temp_test/
 temp_fz/
 temp_fz_test/
-temp-python*
+temp_python*
+temp_java/
 temp_dotnet/
 temp_dotnet_test/
 temp_archive/
 temp_fz_archive/
 lib/
+bin/
 install/
-examples/csharp/solution/*.csproj
-examples/csharp/*.sln
 examples/notebook/.ipynb_checkpoints
 
 ortools/bazel-*
 examples/bazel-*
 bazel-*
 
+.vagrant/
+
 tools/docker/export
 
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
-*.lo
-*.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-bin/*.exe
-bin/*.app
-
+CMakeLists.txt.user
+*.userprefs
 *build*/*
 .idea/*
 .idea/
@@ -83,27 +57,25 @@ build/
 cache/
 **/.vscode/*
 .DS_Store
-
 **/.vs/*
-**/dotnet-test/*
 
-**/packages
+ortools/linear_solver/lpi_glop.cc
 
-ortools/fsharp/**/bin
-ortools/fsharp/**/obj
-ortools/fsharp/**/packages
+ortools/dotnet/*.props
+ortools/dotnet/*.png
+ortools/dotnet/*/*.csproj
+ortools/dotnet/*/*.fsproj
+ortools/dotnet/*/runtime.json
+ortools/dotnet/*/bin
+ortools/dotnet/*/obj
+ortools/**/samples/bin
+ortools/**/samples/obj
+examples/tests/bin
+examples/tests/obj
+examples/contrib/bin
+examples/contrib/obj
+examples/dotnet/bin
+examples/dotnet/obj
 
-examples/dotnet/**/bin
-examples/dotnet/**/obj
-
-ortools/dotnet/OrTools/*.csproj
-ortools/dotnet/OrTools.FSharp/*.fsproj
-ortools/dotnet/*.nuspec
-ortools/dotnet/**/bin
-ortools/dotnet/**/obj
-ortools/dotnet/**/packages
-
-tools/dotnet/CreateSigningKey/bin
-tools/dotnet/CreateSigningKey/obj
-
-*.userprefs
+# Release key
+tools/docker/or-tools.snk

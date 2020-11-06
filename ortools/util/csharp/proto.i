@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,7 +12,7 @@
 // limitations under the License.
 
 // TODO(user): make this SWIG file comply with the SWIG style guide.
-%include ortools/base/base.i
+%include "ortools/base/base.i"
 
 %{
 #include <vector>
@@ -87,13 +87,13 @@
     CSharpProtoType proto = new CSharpProtoType();
     proto.MergeFrom(input);
     return proto;
-  } catch (Google.Protobuf.InvalidProtocolBufferException e) {
-    throw new SystemException(
+  } catch (Google.Protobuf.InvalidProtocolBufferException /*e*/) {
+    throw new System.Exception(
         "Unable to parse CSharpProtoType protocol message.");
   }
 }
 %typemap(out) CppProtoType {
-  const int size = $1.ByteSize();
+  const long size = $1.ByteSizeLong();
   $result = new uint8[size + 4];
   $1.SerializeWithCachedSizesToArray($result + 4);
   $result[0] = size & 0xFF;

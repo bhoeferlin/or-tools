@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -13,6 +13,7 @@
 
 #include "ortools/sat/cp_model_utils.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "ortools/base/stl_util.h"
 
 namespace operations_research {
@@ -21,98 +22,127 @@ namespace sat {
 namespace {
 
 template <typename IntList>
-void AddIndices(const IntList& indices, std::unordered_set<int>* output) {
+void AddIndices(const IntList& indices, absl::flat_hash_set<int>* output) {
   output->insert(indices.begin(), indices.end());
+}
+
+template <typename IntList>
+void AddIndices(const IntList& indices, std::vector<int>* output) {
+  output->insert(output->end(), indices.begin(), indices.end());
 }
 
 }  // namespace
 
-void AddReferencesUsedByConstraint(const ConstraintProto& ct,
-                                   IndexReferences* output) {
+void SetToNegatedLinearExpression(const LinearExpressionProto& input_expr,
+                                  LinearExpressionProto* output_negated_expr) {
+  output_negated_expr->Clear();
+  for (int i = 0; i < input_expr.vars_size(); ++i) {
+    output_negated_expr->add_vars(NegatedRef(input_expr.vars(i)));
+    output_negated_expr->add_coeffs(input_expr.coeffs(i));
+  }
+  output_negated_expr->set_offset(-input_expr.offset());
+}
+
+IndexReferences GetReferencesUsedByConstraint(const ConstraintProto& ct) {
+  IndexReferences output;
   switch (ct.constraint_case()) {
     case ConstraintProto::ConstraintCase::kBoolOr:
-      AddIndices(ct.bool_or().literals(), &output->literals);
+      AddIndices(ct.bool_or().literals(), &output.literals);
       break;
     case ConstraintProto::ConstraintCase::kBoolAnd:
-      AddIndices(ct.bool_and().literals(), &output->literals);
+      AddIndices(ct.bool_and().literals(), &output.literals);
+      break;
+    case ConstraintProto::ConstraintCase::kAtMostOne:
+      AddIndices(ct.at_most_one().literals(), &output.literals);
       break;
     case ConstraintProto::ConstraintCase::kBoolXor:
-      AddIndices(ct.bool_xor().literals(), &output->literals);
+      AddIndices(ct.bool_xor().literals(), &output.literals);
       break;
     case ConstraintProto::ConstraintCase::kIntDiv:
-      output->variables.insert(ct.int_div().target());
-      AddIndices(ct.int_div().vars(), &output->variables);
+      output.variables.push_back(ct.int_div().target());
+      AddIndices(ct.int_div().vars(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kIntMod:
-      output->variables.insert(ct.int_mod().target());
-      AddIndices(ct.int_mod().vars(), &output->variables);
+      output.variables.push_back(ct.int_mod().target());
+      AddIndices(ct.int_mod().vars(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kIntMax:
-      output->variables.insert(ct.int_max().target());
-      AddIndices(ct.int_max().vars(), &output->variables);
+      output.variables.push_back(ct.int_max().target());
+      AddIndices(ct.int_max().vars(), &output.variables);
       break;
+    case ConstraintProto::ConstraintCase::kLinMax: {
+      AddIndices(ct.lin_max().target().vars(), &output.variables);
+      for (int i = 0; i < ct.lin_max().exprs_size(); ++i) {
+        AddIndices(ct.lin_max().exprs(i).vars(), &output.variables);
+      }
+      break;
+    }
     case ConstraintProto::ConstraintCase::kIntMin:
-      output->variables.insert(ct.int_min().target());
-      AddIndices(ct.int_min().vars(), &output->variables);
+      output.variables.push_back(ct.int_min().target());
+      AddIndices(ct.int_min().vars(), &output.variables);
       break;
+    case ConstraintProto::ConstraintCase::kLinMin: {
+      AddIndices(ct.lin_min().target().vars(), &output.variables);
+      for (int i = 0; i < ct.lin_min().exprs_size(); ++i) {
+        AddIndices(ct.lin_min().exprs(i).vars(), &output.variables);
+      }
+      break;
+    }
     case ConstraintProto::ConstraintCase::kIntProd:
-      output->variables.insert(ct.int_prod().target());
-      AddIndices(ct.int_prod().vars(), &output->variables);
+      output.variables.push_back(ct.int_prod().target());
+      AddIndices(ct.int_prod().vars(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kLinear:
-      AddIndices(ct.linear().vars(), &output->variables);
+      AddIndices(ct.linear().vars(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kAllDiff:
-      AddIndices(ct.all_diff().vars(), &output->variables);
+      AddIndices(ct.all_diff().vars(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kElement:
-      output->variables.insert(ct.element().index());
-      output->variables.insert(ct.element().target());
-      AddIndices(ct.element().vars(), &output->variables);
+      output.variables.push_back(ct.element().index());
+      output.variables.push_back(ct.element().target());
+      AddIndices(ct.element().vars(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kCircuit:
-      AddIndices(ct.circuit().literals(), &output->variables);
+      AddIndices(ct.circuit().literals(), &output.literals);
       break;
     case ConstraintProto::ConstraintCase::kRoutes:
-      AddIndices(ct.routes().literals(), &output->literals);
+      AddIndices(ct.routes().literals(), &output.literals);
       break;
     case ConstraintProto::ConstraintCase::kCircuitCovering:
-      AddIndices(ct.circuit_covering().nexts(), &output->variables);
+      AddIndices(ct.circuit_covering().nexts(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kInverse:
-      AddIndices(ct.inverse().f_direct(), &output->variables);
-      AddIndices(ct.inverse().f_inverse(), &output->variables);
+      AddIndices(ct.inverse().f_direct(), &output.variables);
+      AddIndices(ct.inverse().f_inverse(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kReservoir:
-      AddIndices(ct.reservoir().times(), &output->variables);
+      AddIndices(ct.reservoir().times(), &output.variables);
+      AddIndices(ct.reservoir().actives(), &output.literals);
       break;
     case ConstraintProto::ConstraintCase::kTable:
-      AddIndices(ct.table().vars(), &output->variables);
+      AddIndices(ct.table().vars(), &output.variables);
       break;
-    case ConstraintProto::ConstraintCase::kAutomata:
-      AddIndices(ct.automata().vars(), &output->variables);
+    case ConstraintProto::ConstraintCase::kAutomaton:
+      AddIndices(ct.automaton().vars(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::kInterval:
-      output->variables.insert(ct.interval().start());
-      output->variables.insert(ct.interval().end());
-      output->variables.insert(ct.interval().size());
+      output.variables.push_back(ct.interval().start());
+      output.variables.push_back(ct.interval().end());
+      output.variables.push_back(ct.interval().size());
       break;
     case ConstraintProto::ConstraintCase::kNoOverlap:
-      AddIndices(ct.no_overlap().intervals(), &output->intervals);
       break;
     case ConstraintProto::ConstraintCase::kNoOverlap2D:
-      AddIndices(ct.no_overlap_2d().x_intervals(), &output->intervals);
-      AddIndices(ct.no_overlap_2d().y_intervals(), &output->intervals);
       break;
     case ConstraintProto::ConstraintCase::kCumulative:
-      output->variables.insert(ct.cumulative().capacity());
-      AddIndices(ct.cumulative().intervals(), &output->intervals);
-      AddIndices(ct.cumulative().demands(), &output->variables);
+      output.variables.push_back(ct.cumulative().capacity());
+      AddIndices(ct.cumulative().demands(), &output.variables);
       break;
     case ConstraintProto::ConstraintCase::CONSTRAINT_NOT_SET:
-      // Empty constraint.
       break;
   }
+  return output;
 }
 
 #define APPLY_TO_SINGULAR_FIELD(ct_name, field_name)  \
@@ -137,6 +167,9 @@ void ApplyToAllLiteralIndices(const std::function<void(int*)>& f,
     case ConstraintProto::ConstraintCase::kBoolAnd:
       APPLY_TO_REPEATED_FIELD(bool_and, literals);
       break;
+    case ConstraintProto::ConstraintCase::kAtMostOne:
+      APPLY_TO_REPEATED_FIELD(at_most_one, literals);
+      break;
     case ConstraintProto::ConstraintCase::kBoolXor:
       APPLY_TO_REPEATED_FIELD(bool_xor, literals);
       break;
@@ -146,7 +179,11 @@ void ApplyToAllLiteralIndices(const std::function<void(int*)>& f,
       break;
     case ConstraintProto::ConstraintCase::kIntMax:
       break;
+    case ConstraintProto::ConstraintCase::kLinMax:
+      break;
     case ConstraintProto::ConstraintCase::kIntMin:
+      break;
+    case ConstraintProto::ConstraintCase::kLinMin:
       break;
     case ConstraintProto::ConstraintCase::kIntProd:
       break;
@@ -167,10 +204,11 @@ void ApplyToAllLiteralIndices(const std::function<void(int*)>& f,
     case ConstraintProto::ConstraintCase::kInverse:
       break;
     case ConstraintProto::ConstraintCase::kReservoir:
+      APPLY_TO_REPEATED_FIELD(reservoir, actives);
       break;
     case ConstraintProto::ConstraintCase::kTable:
       break;
-    case ConstraintProto::ConstraintCase::kAutomata:
+    case ConstraintProto::ConstraintCase::kAutomaton:
       break;
     case ConstraintProto::ConstraintCase::kInterval:
       break;
@@ -192,6 +230,8 @@ void ApplyToAllVariableIndices(const std::function<void(int*)>& f,
       break;
     case ConstraintProto::ConstraintCase::kBoolAnd:
       break;
+    case ConstraintProto::ConstraintCase::kAtMostOne:
+      break;
     case ConstraintProto::ConstraintCase::kBoolXor:
       break;
     case ConstraintProto::ConstraintCase::kIntDiv:
@@ -206,9 +246,21 @@ void ApplyToAllVariableIndices(const std::function<void(int*)>& f,
       APPLY_TO_SINGULAR_FIELD(int_max, target);
       APPLY_TO_REPEATED_FIELD(int_max, vars);
       break;
+    case ConstraintProto::ConstraintCase::kLinMax:
+      APPLY_TO_REPEATED_FIELD(lin_max, target()->mutable_vars);
+      for (int i = 0; i < ct->lin_max().exprs_size(); ++i) {
+        APPLY_TO_REPEATED_FIELD(lin_max, exprs(i)->mutable_vars);
+      }
+      break;
     case ConstraintProto::ConstraintCase::kIntMin:
       APPLY_TO_SINGULAR_FIELD(int_min, target);
       APPLY_TO_REPEATED_FIELD(int_min, vars);
+      break;
+    case ConstraintProto::ConstraintCase::kLinMin:
+      APPLY_TO_REPEATED_FIELD(lin_min, target()->mutable_vars);
+      for (int i = 0; i < ct->lin_min().exprs_size(); ++i) {
+        APPLY_TO_REPEATED_FIELD(lin_min, exprs(i)->mutable_vars);
+      }
       break;
     case ConstraintProto::ConstraintCase::kIntProd:
       APPLY_TO_SINGULAR_FIELD(int_prod, target);
@@ -242,8 +294,8 @@ void ApplyToAllVariableIndices(const std::function<void(int*)>& f,
     case ConstraintProto::ConstraintCase::kTable:
       APPLY_TO_REPEATED_FIELD(table, vars);
       break;
-    case ConstraintProto::ConstraintCase::kAutomata:
-      APPLY_TO_REPEATED_FIELD(automata, vars);
+    case ConstraintProto::ConstraintCase::kAutomaton:
+      APPLY_TO_REPEATED_FIELD(automaton, vars);
       break;
     case ConstraintProto::ConstraintCase::kInterval:
       APPLY_TO_SINGULAR_FIELD(interval, start);
@@ -270,6 +322,8 @@ void ApplyToAllIntervalIndices(const std::function<void(int*)>& f,
       break;
     case ConstraintProto::ConstraintCase::kBoolAnd:
       break;
+    case ConstraintProto::ConstraintCase::kAtMostOne:
+      break;
     case ConstraintProto::ConstraintCase::kBoolXor:
       break;
     case ConstraintProto::ConstraintCase::kIntDiv:
@@ -278,7 +332,11 @@ void ApplyToAllIntervalIndices(const std::function<void(int*)>& f,
       break;
     case ConstraintProto::ConstraintCase::kIntMax:
       break;
+    case ConstraintProto::ConstraintCase::kLinMax:
+      break;
     case ConstraintProto::ConstraintCase::kIntMin:
+      break;
+    case ConstraintProto::ConstraintCase::kLinMin:
       break;
     case ConstraintProto::ConstraintCase::kIntProd:
       break;
@@ -300,7 +358,7 @@ void ApplyToAllIntervalIndices(const std::function<void(int*)>& f,
       break;
     case ConstraintProto::ConstraintCase::kTable:
       break;
-    case ConstraintProto::ConstraintCase::kAutomata:
+    case ConstraintProto::ConstraintCase::kAutomaton:
       break;
     case ConstraintProto::ConstraintCase::kInterval:
       break;
@@ -329,6 +387,8 @@ std::string ConstraintCaseName(
       return "kBoolOr";
     case ConstraintProto::ConstraintCase::kBoolAnd:
       return "kBoolAnd";
+    case ConstraintProto::ConstraintCase::kAtMostOne:
+      return "kAtMostOne";
     case ConstraintProto::ConstraintCase::kBoolXor:
       return "kBoolXor";
     case ConstraintProto::ConstraintCase::kIntDiv:
@@ -337,8 +397,12 @@ std::string ConstraintCaseName(
       return "kIntMod";
     case ConstraintProto::ConstraintCase::kIntMax:
       return "kIntMax";
+    case ConstraintProto::ConstraintCase::kLinMax:
+      return "kLinMax";
     case ConstraintProto::ConstraintCase::kIntMin:
       return "kIntMin";
+    case ConstraintProto::ConstraintCase::kLinMin:
+      return "kLinMin";
     case ConstraintProto::ConstraintCase::kIntProd:
       return "kIntProd";
     case ConstraintProto::ConstraintCase::kLinear:
@@ -359,8 +423,8 @@ std::string ConstraintCaseName(
       return "kReservoir";
     case ConstraintProto::ConstraintCase::kTable:
       return "kTable";
-    case ConstraintProto::ConstraintCase::kAutomata:
-      return "kAutomata";
+    case ConstraintProto::ConstraintCase::kAutomaton:
+      return "kAutomaton";
     case ConstraintProto::ConstraintCase::kInterval:
       return "kInterval";
     case ConstraintProto::ConstraintCase::kNoOverlap:
@@ -375,21 +439,98 @@ std::string ConstraintCaseName(
 }
 
 std::vector<int> UsedVariables(const ConstraintProto& ct) {
-  IndexReferences references;
-  AddReferencesUsedByConstraint(ct, &references);
-
-  std::vector<int> used_variables;
-  for (const int var : references.variables) {
-    used_variables.push_back(PositiveRef(var));
+  IndexReferences references = GetReferencesUsedByConstraint(ct);
+  for (int& ref : references.variables) {
+    ref = PositiveRef(ref);
   }
   for (const int lit : references.literals) {
-    used_variables.push_back(PositiveRef(lit));
+    references.variables.push_back(PositiveRef(lit));
   }
-  if (HasEnforcementLiteral(ct)) {
-    used_variables.push_back(PositiveRef(ct.enforcement_literal(0)));
+  for (const int lit : ct.enforcement_literal()) {
+    references.variables.push_back(PositiveRef(lit));
   }
-  gtl::STLSortAndRemoveDuplicates(&used_variables);
-  return used_variables;
+  gtl::STLSortAndRemoveDuplicates(&references.variables);
+  return references.variables;
+}
+
+std::vector<int> UsedIntervals(const ConstraintProto& ct) {
+  std::vector<int> used_intervals;
+  switch (ct.constraint_case()) {
+    case ConstraintProto::ConstraintCase::kBoolOr:
+      break;
+    case ConstraintProto::ConstraintCase::kBoolAnd:
+      break;
+    case ConstraintProto::ConstraintCase::kAtMostOne:
+      break;
+    case ConstraintProto::ConstraintCase::kBoolXor:
+      break;
+    case ConstraintProto::ConstraintCase::kIntDiv:
+      break;
+    case ConstraintProto::ConstraintCase::kIntMod:
+      break;
+    case ConstraintProto::ConstraintCase::kIntMax:
+      break;
+    case ConstraintProto::ConstraintCase::kLinMax:
+      break;
+    case ConstraintProto::ConstraintCase::kIntMin:
+      break;
+    case ConstraintProto::ConstraintCase::kLinMin:
+      break;
+    case ConstraintProto::ConstraintCase::kIntProd:
+      break;
+    case ConstraintProto::ConstraintCase::kLinear:
+      break;
+    case ConstraintProto::ConstraintCase::kAllDiff:
+      break;
+    case ConstraintProto::ConstraintCase::kElement:
+      break;
+    case ConstraintProto::ConstraintCase::kCircuit:
+      break;
+    case ConstraintProto::ConstraintCase::kRoutes:
+      break;
+    case ConstraintProto::ConstraintCase::kCircuitCovering:
+      break;
+    case ConstraintProto::ConstraintCase::kInverse:
+      break;
+    case ConstraintProto::ConstraintCase::kReservoir:
+      break;
+    case ConstraintProto::ConstraintCase::kTable:
+      break;
+    case ConstraintProto::ConstraintCase::kAutomaton:
+      break;
+    case ConstraintProto::ConstraintCase::kInterval:
+      break;
+    case ConstraintProto::ConstraintCase::kNoOverlap:
+      AddIndices(ct.no_overlap().intervals(), &used_intervals);
+      break;
+    case ConstraintProto::ConstraintCase::kNoOverlap2D:
+      AddIndices(ct.no_overlap_2d().x_intervals(), &used_intervals);
+      AddIndices(ct.no_overlap_2d().y_intervals(), &used_intervals);
+      break;
+    case ConstraintProto::ConstraintCase::kCumulative:
+      AddIndices(ct.cumulative().intervals(), &used_intervals);
+      break;
+    case ConstraintProto::ConstraintCase::CONSTRAINT_NOT_SET:
+      break;
+  }
+  gtl::STLSortAndRemoveDuplicates(&used_intervals);
+  return used_intervals;
+}
+
+int64 ComputeInnerObjective(const CpObjectiveProto& objective,
+                            const CpSolverResponse& response) {
+  int64 objective_value = 0;
+  auto& repeated_field_values = response.solution().empty()
+                                    ? response.solution_lower_bounds()
+                                    : response.solution();
+  for (int i = 0; i < objective.vars_size(); ++i) {
+    int64 coeff = objective.coeffs(i);
+    const int ref = objective.vars(i);
+    const int var = PositiveRef(ref);
+    if (!RefIsPositive(ref)) coeff = -coeff;
+    objective_value += coeff * repeated_field_values[var];
+  }
+  return objective_value;
 }
 
 }  // namespace sat

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,12 +16,20 @@
 
 #include <vector>
 
+#include "ortools/sat/cp_model_loader.h"
 #include "ortools/sat/integer.h"
+#include "ortools/sat/linear_constraint.h"
 #include "ortools/sat/linear_programming_constraint.h"
 #include "ortools/sat/model.h"
 
 namespace operations_research {
 namespace sat {
+
+struct LinearRelaxation {
+  std::vector<LinearConstraint> linear_constraints;
+  std::vector<std::vector<Literal>> at_most_ones;
+  std::vector<CutGenerator> cut_generators;
+};
 
 // If the given IntegerVariable is fully encoded (li <=> var == xi), adds to the
 // constraints vector the following linear relaxation of its encoding:
@@ -33,7 +41,7 @@ namespace sat {
 // Returns false, if the relaxation couldn't be added because this variable
 // was not fully encoded or not all its associated literal had a view.
 bool AppendFullEncodingRelaxation(IntegerVariable var, const Model& model,
-                                  std::vector<LinearConstraint>* constraints);
+                                  LinearRelaxation* relaxation);
 
 // When the set of (li <=> var == xi) do not cover the full domain of xi, we
 // do something a bit more involved. Let min/max the min and max value of the
@@ -47,9 +55,8 @@ bool AppendFullEncodingRelaxation(IntegerVariable var, const Model& model,
 // do not have an IntegerView will be skipped, there is no point adding them
 // to the LP if they are not used in any other constraint, the relaxation will
 // have the same "power" without them.
-void AppendPartialEncodingRelaxation(
-    IntegerVariable var, const Model& model,
-    std::vector<LinearConstraint>* constraints);
+void AppendPartialEncodingRelaxation(IntegerVariable var, const Model& model,
+                                     LinearRelaxation* relaxation);
 
 // This is a different relaxation that use a partial set of literal li such that
 // (li <=> var >= xi). In which case we use the following encoding:
@@ -59,9 +66,74 @@ void AppendPartialEncodingRelaxation(
 //
 // Like for AppendPartialEncodingRelaxation() we skip any li that do not have
 // an integer view.
-void AppendPartialGreaterThanEncodingRelaxation(
-    IntegerVariable var, const Model& model,
-    std::vector<LinearConstraint>* constraints);
+void AppendPartialGreaterThanEncodingRelaxation(IntegerVariable var,
+                                                const Model& model,
+                                                LinearRelaxation* relaxation);
+
+// Adds linearization of different types of constraints.
+void TryToLinearizeConstraint(const CpModelProto& model_proto,
+                              const ConstraintProto& ct, Model* model,
+                              int linearization_level,
+                              LinearRelaxation* relaxation);
+
+// Adds linearization of no overlap constraints.
+// It adds an energetic equation linking the duration of all potential tasks to
+// the actual span of the no overlap constraint.
+void AppendNoOverlapRelaxation(const CpModelProto& model_proto,
+                               const ConstraintProto& ct,
+                               int linearization_level, Model* model,
+                               LinearRelaxation* relaxation);
+
+// Adds linearization of cumulative constraints.The second part adds an
+// energetic equation linking the duration of all potential tasks to the actual
+// max span * capacity of the cumulative constraint.
+void AppendCumulativeRelaxation(const CpModelProto& model_proto,
+                                const ConstraintProto& ct,
+                                int linearization_level, Model* model,
+                                LinearRelaxation* relaxation);
+
+// Adds linearization of int max constraints. This can also be used to linearize
+// int min with negated variables.
+void AppendMaxRelaxation(IntegerVariable target,
+                         const std::vector<IntegerVariable>& vars,
+                         int linearization_level, Model* model,
+                         LinearRelaxation* relaxation);
+
+// Adds linearization of int max constraints. Returns a vector of z vars such
+// that: z_vars[l] == 1 <=> target = exprs[l].
+//
+// Consider the Lin Max constraint with d expressions and n variables in the
+// form: target = max {exprs[l] = Sum (wli * xi + bl)}. l in {1,..,d}.
+//   Li = lower bound of xi
+//   Ui = upper bound of xi.
+// Let zl be in {0,1} for all l in {1,..,d}.
+// The target = exprs[l] when zl = 1.
+//
+// The following is a valid linearization for Lin Max.
+//   target >= exprs[l], for all l in {1,..,d}
+//   target <= Sum_i(wki * xi) + Sum_l((Nkl + bl) * zl), for all k in {1,..,d}
+// Where Nkl is a large number defined as:
+//   Nkl = Sum_i(max((wli - wki)*Li, (wli - wki)*Ui))
+//       = Sum (max corner difference for variable i, target expr k, max expr l)
+// Reference: "Strong mixed-integer programming formulations for trained neural
+// networks" by Ross Anderson et. (https://arxiv.org/pdf/1811.01988.pdf).
+// TODO(user): Support linear expression as target.
+std::vector<IntegerVariable> AppendLinMaxRelaxation(
+    IntegerVariable target, const std::vector<LinearExpression>& exprs,
+    Model* model, LinearRelaxation* relaxation);
+
+// Appends linear constraints to the relaxation. This also handles the
+// relaxation of linear constraints with enforcement literals.
+// A linear constraint lb <= ax <= ub with enforcement literals {ei} is relaxed
+// as following.
+// lb <= (Sum Negated(ei) * (lb - implied_lb)) + ax <= inf
+// -inf <= (Sum Negated(ei) * (ub - implied_ub)) + ax <= ub
+// Where implied_lb and implied_ub are trivial lower and upper bounds of the
+// constraint.
+void AppendLinearConstraintRelaxation(const ConstraintProto& constraint_proto,
+                                      const int linearization_level,
+                                      const Model& model,
+                                      LinearRelaxation* relaxation);
 
 }  // namespace sat
 }  // namespace operations_research

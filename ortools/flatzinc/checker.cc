@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,9 +14,9 @@
 #include "ortools/flatzinc/checker.h"
 
 #include <algorithm>
-#include <unordered_map>
-#include <unordered_set>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ortools/base/map_util.h"
 #include "ortools/flatzinc/logging.h"
 #include "ortools/flatzinc/model.h"
@@ -68,7 +68,7 @@ int64 EvalAt(const Argument& arg, int pos,
 bool CheckAllDifferentInt(
     const Constraint& ct,
     const std::function<int64(IntegerVariable*)>& evaluator) {
-  std::unordered_set<int64> visited;
+  absl::flat_hash_set<int64> visited;
   for (int i = 0; i < Size(ct.arguments[0]); ++i) {
     const int64 value = EvalAt(ct.arguments[0], i, evaluator);
     if (gtl::ContainsKey(visited, value)) {
@@ -83,7 +83,7 @@ bool CheckAllDifferentInt(
 bool CheckAlldifferentExcept0(
     const Constraint& ct,
     const std::function<int64(IntegerVariable*)>& evaluator) {
-  std::unordered_set<int64> visited;
+  absl::flat_hash_set<int64> visited;
   for (int i = 0; i < Size(ct.arguments[0]); ++i) {
     const int64 value = EvalAt(ct.arguments[0], i, evaluator);
     if (value != 0 && gtl::ContainsKey(visited, value)) {
@@ -158,7 +158,7 @@ bool CheckArrayIntElement(
   return element == target;
 }
 
-bool CheckArrayIntElementNoOffset(
+bool CheckArrayIntElementNonShifted(
     const Constraint& ct,
     const std::function<int64(IntegerVariable*)>& evaluator) {
   CHECK_EQ(ct.arguments[0].variables.size(), 1);
@@ -260,7 +260,7 @@ bool CheckCircuit(const Constraint& ct,
     }
   }
 
-  std::unordered_set<int64> visited;
+  absl::flat_hash_set<int64> visited;
   int64 current = 0;
   for (int i = 0; i < Size(ct.arguments[0]); ++i) {
     const int64 next = EvalAt(ct.arguments[0], current, evaluator) + shift;
@@ -337,7 +337,7 @@ bool CheckCumulative(const Constraint& ct,
   const int size = Size(ct.arguments[0]);
   CHECK_EQ(size, Size(ct.arguments[1]));
   CHECK_EQ(size, Size(ct.arguments[2]));
-  std::unordered_map<int64, int64> usage;
+  absl::flat_hash_map<int64, int64> usage;
   for (int i = 0; i < size; ++i) {
     const int64 start = EvalAt(ct.arguments[0], i, evaluator);
     const int64 duration = EvalAt(ct.arguments[1], i, evaluator);
@@ -395,7 +395,7 @@ std::vector<int64> ComputeGlobalCardinalityCards(
     const Constraint& ct,
     const std::function<int64(IntegerVariable*)>& evaluator) {
   std::vector<int64> cards(Size(ct.arguments[1]), 0);
-  std::unordered_map<int64, int> positions;
+  absl::flat_hash_map<int64, int> positions;
   for (int i = 0; i < ct.arguments[1].values.size(); ++i) {
     const int64 value = ct.arguments[1].values[i];
     CHECK(!gtl::ContainsKey(positions, value));
@@ -518,11 +518,19 @@ bool CheckIntEq(const Constraint& ct,
   return left == right;
 }
 
+bool CheckIntEqImp(const Constraint& ct,
+                   const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = Eval(ct.arguments[0], evaluator);
+  const int64 right = Eval(ct.arguments[1], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
+  return (status && (left == right)) || !status;
+}
+
 bool CheckIntEqReif(const Constraint& ct,
                     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = Eval(ct.arguments[0], evaluator);
   const int64 right = Eval(ct.arguments[1], evaluator);
-  const int64 status = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
   return status == (left == right);
 }
 
@@ -533,11 +541,19 @@ bool CheckIntGe(const Constraint& ct,
   return left >= right;
 }
 
+bool CheckIntGeImp(const Constraint& ct,
+                   const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = Eval(ct.arguments[0], evaluator);
+  const int64 right = Eval(ct.arguments[1], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
+  return (status && (left >= right)) || !status;
+}
+
 bool CheckIntGeReif(const Constraint& ct,
                     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = Eval(ct.arguments[0], evaluator);
   const int64 right = Eval(ct.arguments[1], evaluator);
-  const int64 status = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
   return status == (left >= right);
 }
 
@@ -548,11 +564,19 @@ bool CheckIntGt(const Constraint& ct,
   return left > right;
 }
 
+bool CheckIntGtImp(const Constraint& ct,
+                   const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = Eval(ct.arguments[0], evaluator);
+  const int64 right = Eval(ct.arguments[1], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
+  return (status && (left > right)) || !status;
+}
+
 bool CheckIntGtReif(const Constraint& ct,
                     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = Eval(ct.arguments[0], evaluator);
   const int64 right = Eval(ct.arguments[1], evaluator);
-  const int64 status = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
   return status == (left > right);
 }
 
@@ -563,11 +587,19 @@ bool CheckIntLe(const Constraint& ct,
   return left <= right;
 }
 
+bool CheckIntLeImp(const Constraint& ct,
+                   const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = Eval(ct.arguments[0], evaluator);
+  const int64 right = Eval(ct.arguments[1], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
+  return (status && (left <= right)) || !status;
+}
+
 bool CheckIntLeReif(const Constraint& ct,
                     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = Eval(ct.arguments[0], evaluator);
   const int64 right = Eval(ct.arguments[1], evaluator);
-  const int64 status = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
   return status == (left <= right);
 }
 
@@ -578,11 +610,19 @@ bool CheckIntLt(const Constraint& ct,
   return left < right;
 }
 
+bool CheckIntLtImp(const Constraint& ct,
+                   const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = Eval(ct.arguments[0], evaluator);
+  const int64 right = Eval(ct.arguments[1], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
+  return (status && (left < right)) || !status;
+}
+
 bool CheckIntLtReif(const Constraint& ct,
                     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = Eval(ct.arguments[0], evaluator);
   const int64 right = Eval(ct.arguments[1], evaluator);
-  const int64 status = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
   return status == (left < right);
 }
 
@@ -603,12 +643,20 @@ bool CheckIntLinEq(const Constraint& ct,
   return left == right;
 }
 
+bool CheckIntLinEqImp(const Constraint& ct,
+                      const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = ComputeIntLin(ct, evaluator);
+  const int64 right = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[3], evaluator) != 0;
+  return (status && (left == right)) || !status;
+}
+
 bool CheckIntLinEqReif(
     const Constraint& ct,
     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = ComputeIntLin(ct, evaluator);
   const int64 right = Eval(ct.arguments[2], evaluator);
-  const int64 status = Eval(ct.arguments[3], evaluator);
+  const bool status = Eval(ct.arguments[3], evaluator) != 0;
   return status == (left == right);
 }
 
@@ -619,12 +667,20 @@ bool CheckIntLinGe(const Constraint& ct,
   return left >= right;
 }
 
+bool CheckIntLinGeImp(const Constraint& ct,
+                      const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = ComputeIntLin(ct, evaluator);
+  const int64 right = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[3], evaluator) != 0;
+  return (status && (left >= right)) || !status;
+}
+
 bool CheckIntLinGeReif(
     const Constraint& ct,
     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = ComputeIntLin(ct, evaluator);
   const int64 right = Eval(ct.arguments[2], evaluator);
-  const int64 status = Eval(ct.arguments[3], evaluator);
+  const bool status = Eval(ct.arguments[3], evaluator) != 0;
   return status == (left >= right);
 }
 
@@ -635,12 +691,20 @@ bool CheckIntLinLe(const Constraint& ct,
   return left <= right;
 }
 
+bool CheckIntLinLeImp(const Constraint& ct,
+                      const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = ComputeIntLin(ct, evaluator);
+  const int64 right = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[3], evaluator) != 0;
+  return (status && (left <= right)) || !status;
+}
+
 bool CheckIntLinLeReif(
     const Constraint& ct,
     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = ComputeIntLin(ct, evaluator);
   const int64 right = Eval(ct.arguments[2], evaluator);
-  const int64 status = Eval(ct.arguments[3], evaluator);
+  const bool status = Eval(ct.arguments[3], evaluator) != 0;
   return status == (left <= right);
 }
 
@@ -651,12 +715,20 @@ bool CheckIntLinNe(const Constraint& ct,
   return left != right;
 }
 
+bool CheckIntLinNeImp(const Constraint& ct,
+                      const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = ComputeIntLin(ct, evaluator);
+  const int64 right = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[3], evaluator) != 0;
+  return (status && (left != right)) || !status;
+}
+
 bool CheckIntLinNeReif(
     const Constraint& ct,
     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = ComputeIntLin(ct, evaluator);
   const int64 right = Eval(ct.arguments[2], evaluator);
-  const int64 status = Eval(ct.arguments[3], evaluator);
+  const bool status = Eval(ct.arguments[3], evaluator) != 0;
   return status == (left != right);
 }
 
@@ -699,11 +771,19 @@ bool CheckIntNe(const Constraint& ct,
   return left != right;
 }
 
+bool CheckIntNeImp(const Constraint& ct,
+                   const std::function<int64(IntegerVariable*)>& evaluator) {
+  const int64 left = Eval(ct.arguments[0], evaluator);
+  const int64 right = Eval(ct.arguments[1], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
+  return (status && (left != right)) || !status;
+}
+
 bool CheckIntNeReif(const Constraint& ct,
                     const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 left = Eval(ct.arguments[0], evaluator);
   const int64 right = Eval(ct.arguments[1], evaluator);
-  const int64 status = Eval(ct.arguments[2], evaluator);
+  const bool status = Eval(ct.arguments[2], evaluator) != 0;
   return status == (left != right);
 }
 
@@ -899,7 +979,7 @@ bool CheckNetworkFlowCost(
 bool CheckNvalue(const Constraint& ct,
                  const std::function<int64(IntegerVariable*)>& evaluator) {
   const int64 count = Eval(ct.arguments[0], evaluator);
-  std::unordered_set<int64> all_values;
+  absl::flat_hash_set<int64> all_values;
   for (int i = 0; i < Size(ct.arguments[1]); ++i) {
     all_values.insert(EvalAt(ct.arguments[1], i, evaluator));
   }
@@ -962,8 +1042,8 @@ bool CheckSlidingSum(const Constraint& ct,
 bool CheckSort(const Constraint& ct,
                const std::function<int64(IntegerVariable*)>& evaluator) {
   CHECK_EQ(Size(ct.arguments[0]), Size(ct.arguments[1]));
-  std::unordered_map<int64, int> init_count;
-  std::unordered_map<int64, int> sorted_count;
+  absl::flat_hash_map<int64, int> init_count;
+  absl::flat_hash_map<int64, int> sorted_count;
   for (int i = 0; i < Size(ct.arguments[0]); ++i) {
     init_count[EvalAt(ct.arguments[0], i, evaluator)]++;
     sorted_count[EvalAt(ct.arguments[1], i, evaluator)]++;
@@ -982,7 +1062,7 @@ bool CheckSort(const Constraint& ct,
 
 bool CheckSubCircuit(const Constraint& ct,
                      const std::function<int64(IntegerVariable*)>& evaluator) {
-  std::unordered_set<int64> visited;
+  absl::flat_hash_set<int64> visited;
   // Find inactive nodes (pointing to themselves).
   int64 current = -1;
   for (int i = 0; i < Size(ct.arguments[0]); ++i) {
@@ -1031,13 +1111,13 @@ bool CheckSymmetricAllDifferent(
   return true;
 }
 
-using CallMap = std::unordered_map<
+using CallMap = absl::flat_hash_map<
     std::string, std::function<bool(const Constraint& ct,
                                     std::function<int64(IntegerVariable*)>)>>;
 
 CallMap CreateCallMap() {
   CallMap m;
-  m["all_different_int"] = CheckAllDifferentInt;
+  m["fzn_all_different_int"] = CheckAllDifferentInt;
   m["alldifferent_except_0"] = CheckAlldifferentExcept0;
   m["among"] = CheckAmong;
   m["array_bool_and"] = CheckArrayBoolAnd;
@@ -1045,7 +1125,7 @@ CallMap CreateCallMap() {
   m["array_bool_or"] = CheckArrayBoolOr;
   m["array_bool_xor"] = CheckArrayBoolXor;
   m["array_int_element"] = CheckArrayIntElement;
-  m["array_int_element_no_offset"] = CheckArrayIntElementNoOffset;
+  m["array_int_element_nonshifted"] = CheckArrayIntElementNonShifted;
   m["array_var_bool_element"] = CheckArrayVarIntElement;
   m["array_var_int_element"] = CheckArrayVarIntElement;
   m["at_most_int"] = CheckAtMostInt;
@@ -1053,25 +1133,31 @@ CallMap CreateCallMap() {
   m["bool_clause"] = CheckBoolClause;
   m["bool_eq"] = CheckIntEq;
   m["bool2int"] = CheckIntEq;
+  m["bool_eq_imp"] = CheckIntEqImp;
   m["bool_eq_reif"] = CheckIntEqReif;
   m["bool_ge"] = CheckIntGe;
+  m["bool_ge_imp"] = CheckIntGeImp;
   m["bool_ge_reif"] = CheckIntGeReif;
   m["bool_gt"] = CheckIntGt;
+  m["bool_gt_imp"] = CheckIntGtImp;
   m["bool_gt_reif"] = CheckIntGtReif;
   m["bool_le"] = CheckIntLe;
+  m["bool_le_imp"] = CheckIntLeImp;
   m["bool_le_reif"] = CheckIntLeReif;
   m["bool_left_imp"] = CheckIntLe;
   m["bool_lin_eq"] = CheckIntLinEq;
   m["bool_lin_le"] = CheckIntLinLe;
   m["bool_lt"] = CheckIntLt;
+  m["bool_lt_imp"] = CheckIntLtImp;
   m["bool_lt_reif"] = CheckIntLtReif;
   m["bool_ne"] = CheckIntNe;
+  m["bool_ne_imp"] = CheckIntNeImp;
   m["bool_ne_reif"] = CheckIntNeReif;
   m["bool_not"] = CheckBoolNot;
   m["bool_or"] = CheckBoolOr;
   m["bool_right_imp"] = CheckIntGe;
   m["bool_xor"] = CheckBoolXor;
-  m["circuit"] = CheckCircuit;
+  m["fzn_circuit"] = CheckCircuit;
   m["count_eq"] = CheckCountEq;
   m["count"] = CheckCountEq;
   m["count_geq"] = CheckCountGeq;
@@ -1080,13 +1166,13 @@ CallMap CreateCallMap() {
   m["count_lt"] = CheckCountLt;
   m["count_neq"] = CheckCountNeq;
   m["count_reif"] = CheckCountReif;
-  m["cumulative"] = CheckCumulative;
+  m["fzn_cumulative"] = CheckCumulative;
   m["var_cumulative"] = CheckCumulative;
   m["variable_cumulative"] = CheckCumulative;
   m["fixed_cumulative"] = CheckCumulative;
-  m["diffn"] = CheckDiffn;
+  m["fzn_diffn"] = CheckDiffn;
   m["diffn_k_with_sizes"] = CheckDiffnK;
-  m["diffn_nonstrict"] = CheckDiffnNonStrict;
+  m["fzn_diffn_nonstrict"] = CheckDiffnNonStrict;
   m["diffn_nonstrict_k_with_sizes"] = CheckDiffnNonStrictK;
   m["disjunctive"] = CheckDisjunctive;
   m["disjunctive_strict"] = CheckDisjunctiveStrict;
@@ -1099,33 +1185,43 @@ CallMap CreateCallMap() {
   m["int_abs"] = CheckIntAbs;
   m["int_div"] = CheckIntDiv;
   m["int_eq"] = CheckIntEq;
+  m["int_eq_imp"] = CheckIntEqImp;
   m["int_eq_reif"] = CheckIntEqReif;
   m["int_ge"] = CheckIntGe;
+  m["int_ge_imp"] = CheckIntGeImp;
   m["int_ge_reif"] = CheckIntGeReif;
   m["int_gt"] = CheckIntGt;
+  m["int_gt_imp"] = CheckIntGtImp;
   m["int_gt_reif"] = CheckIntGtReif;
   m["int_le"] = CheckIntLe;
+  m["int_le_imp"] = CheckIntLeImp;
   m["int_le_reif"] = CheckIntLeReif;
   m["int_lin_eq"] = CheckIntLinEq;
+  m["int_lin_eq_imp"] = CheckIntLinEqImp;
   m["int_lin_eq_reif"] = CheckIntLinEqReif;
   m["int_lin_ge"] = CheckIntLinGe;
+  m["int_lin_ge_imp"] = CheckIntLinGeImp;
   m["int_lin_ge_reif"] = CheckIntLinGeReif;
   m["int_lin_le"] = CheckIntLinLe;
+  m["int_lin_le_imp"] = CheckIntLinLeImp;
   m["int_lin_le_reif"] = CheckIntLinLeReif;
   m["int_lin_ne"] = CheckIntLinNe;
+  m["int_lin_ne_imp"] = CheckIntLinNeImp;
   m["int_lin_ne_reif"] = CheckIntLinNeReif;
   m["int_lt"] = CheckIntLt;
+  m["int_lt_imp"] = CheckIntLtImp;
   m["int_lt_reif"] = CheckIntLtReif;
   m["int_max"] = CheckIntMax;
   m["int_min"] = CheckIntMin;
   m["int_minus"] = CheckIntMinus;
   m["int_mod"] = CheckIntMod;
   m["int_ne"] = CheckIntNe;
+  m["int_ne_imp"] = CheckIntNeImp;
   m["int_ne_reif"] = CheckIntNeReif;
   m["int_negate"] = CheckIntNegate;
   m["int_plus"] = CheckIntPlus;
   m["int_times"] = CheckIntTimes;
-  m["inverse"] = CheckInverse;
+  m["fzn_inverse"] = CheckInverse;
   m["lex_less_bool"] = CheckLexLessInt;
   m["lex_less_int"] = CheckLexLessInt;
   m["lex_lesseq_bool"] = CheckLexLesseqInt;
@@ -1136,10 +1232,10 @@ CallMap CreateCallMap() {
   m["minimum_arg_int"] = CheckMinimumArgInt;
   m["minimum_int"] = CheckMinimumInt;
   m["array_int_minimum"] = CheckMinimumInt;
-  m["network_flow"] = CheckNetworkFlow;
-  m["network_flow_cost"] = CheckNetworkFlowCost;
+  m["ortools_network_flow"] = CheckNetworkFlow;
+  m["ortools_network_flow_cost"] = CheckNetworkFlowCost;
   m["nvalue"] = CheckNvalue;
-  m["regular"] = CheckRegular;
+  m["ortools_regular"] = CheckRegular;
   m["regular_nfa"] = CheckRegularNfa;
   m["set_in"] = CheckSetIn;
   m["int_in"] = CheckSetIn;
@@ -1148,10 +1244,10 @@ CallMap CreateCallMap() {
   m["set_in_reif"] = CheckSetInReif;
   m["sliding_sum"] = CheckSlidingSum;
   m["sort"] = CheckSort;
-  m["subcircuit"] = CheckSubCircuit;
+  m["fzn_subcircuit"] = CheckSubCircuit;
   m["symmetric_all_different"] = CheckSymmetricAllDifferent;
-  m["table_bool"] = CheckTableInt;
-  m["table_int"] = CheckTableInt;
+  m["ortools_table_bool"] = CheckTableInt;
+  m["ortools_table_int"] = CheckTableInt;
   return m;
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -20,7 +20,7 @@ namespace operations_research {
 namespace glop {
 
 // Specialization of SparseVectorEntry and SparseVectorIterator for the
-// SparseRow class. In addtion to index(), it also provides col() for better
+// SparseRow class. In addition to index(), it also provides col() for better
 // readability on the client side.
 class SparseRowEntry : public SparseVectorEntry<ColIndex> {
  public:
@@ -32,7 +32,7 @@ class SparseRowEntry : public SparseVectorEntry<ColIndex> {
                  EntryIndex i)
       : SparseVectorEntry<ColIndex>(indices, coefficients, i) {}
 };
-using SparseRowIterator = SparseVectorIterator<SparseRowEntry>;
+using SparseRowIterator = VectorIterator<SparseRowEntry>;
 
 // TODO(user): Use this class where appropriate, i.e. when a SparseColumn is
 // used to store a row vector (by means of RowIndex to ColIndex casting).

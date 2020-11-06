@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -10,7 +10,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+package com.google.ortools.java;
 
+import com.google.ortools.Loader;
 import com.google.ortools.linearsolver.MPConstraint;
 import com.google.ortools.linearsolver.MPObjective;
 import com.google.ortools.linearsolver.MPSolver;
@@ -18,29 +20,15 @@ import com.google.ortools.linearsolver.MPVariable;
 
 /**
  * Linear programming example that shows how to use the API.
- *
  */
-
 public class LinearProgramming {
-  static { System.loadLibrary("jniortools"); }
-
-  private static MPSolver createSolver (String solverType) {
-    try {
-      return new MPSolver("LinearProgrammingExample",
-                          MPSolver.OptimizationProblemType.valueOf(solverType));
-    } catch (java.lang.IllegalArgumentException e) {
-      return null;
-    }
-  }
-
-  private static void runLinearProgrammingExample(String solverType,
-                                                  boolean printModel) {
-    MPSolver solver = createSolver(solverType);
+  private static void runLinearProgrammingExample(String solverType, boolean printModel) {
+    MPSolver solver = MPSolver.createSolver(solverType);
     if (solver == null) {
       System.out.println("Could not create solver " + solverType);
       return;
     }
-    double infinity = MPSolver.infinity();
+    double infinity = java.lang.Double.POSITIVE_INFINITY;
     // x1, x2 and x3 are continuous non-negative variables.
     MPVariable x1 = solver.makeNumVar(0.0, infinity, "x1");
     MPVariable x2 = solver.makeNumVar(0.0, infinity, "x2");
@@ -75,7 +63,7 @@ public class LinearProgramming {
     System.out.println("Number of constraints = " + solver.numConstraints());
 
     if (printModel) {
-      String model = solver.exportModelAsLpFormat(false);
+      String model = solver.exportModelAsLpFormat();
       System.out.println(model);
     }
 
@@ -89,9 +77,9 @@ public class LinearProgramming {
 
     // Verify that the solution satisfies all constraints (when using solvers
     // others than GLOP_LINEAR_PROGRAMMING, this is highly recommended!).
-    if (!solver.verifySolution(/*tolerance=*/1e-7, /*logErrors=*/true)) {
+    if (!solver.verifySolution(/*tolerance=*/1e-7, /* log_errors= */ true)) {
       System.err.println("The solution returned by the solver violated the"
-                         + " problem constraints by at least 1e-7");
+          + " problem constraints by at least 1e-7");
       return;
     }
 
@@ -121,11 +109,10 @@ public class LinearProgramming {
   }
 
   public static void main(String[] args) throws Exception {
+    Loader.loadNativeLibraries();
     System.out.println("---- Linear programming example with GLOP (recommended) ----");
-    runLinearProgrammingExample("GLOP_LINEAR_PROGRAMMING", true);
+    runLinearProgrammingExample("GLOP", true);
     System.out.println("---- Linear programming example with CLP ----");
-    runLinearProgrammingExample("CLP_LINEAR_PROGRAMMING", false);
-    System.out.println("---- Linear programming example with GLPK ----");
-    runLinearProgrammingExample("GLPK_LINEAR_PROGRAMMING", false);
+    runLinearProgrammingExample("CLP", false);
   }
 }

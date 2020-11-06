@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,17 +12,12 @@
 // limitations under the License.
 
 #include <atomic>
-#include <fstream>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "ortools/base/hash.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/port.h"
-#include "ortools/base/stringprintf.h"
-
-#include "ortools/base/hash.h"
 #include "ortools/glop/lp_solver.h"
 #include "ortools/glop/parameters.pb.h"
 #include "ortools/linear_solver/glop_utils.h"
@@ -251,7 +246,7 @@ int64 GLOPInterface::nodes() const {
 }
 
 double GLOPInterface::best_objective_bound() const {
-  LOG(DFATAL) << "Best objective bound only available for discrete problems";
+  // TODO(user): report a better bound when we can.
   return trivial_worst_objective_bound();
 }
 
@@ -304,7 +299,7 @@ void GLOPInterface::ExtractNewConstraints() {
     DCHECK_EQ(new_row, row);
     linear_program_.SetConstraintBounds(row, lb, ub);
 
-    for (CoeffEntry entry : ct->coefficients_) {
+    for (const auto& entry : ct->coefficients_) {
       const int var_index = entry.first->index();
       DCHECK(variable_is_extracted(var_index));
       const glop::ColIndex col(var_index);
@@ -316,7 +311,7 @@ void GLOPInterface::ExtractNewConstraints() {
 
 void GLOPInterface::ExtractObjective() {
   linear_program_.SetObjectiveOffset(solver_->Objective().offset());
-  for (CoeffEntry entry : solver_->objective_->coefficients_) {
+  for (const auto& entry : solver_->objective_->coefficients_) {
     const int var_index = entry.first->index();
     const glop::ColIndex col(var_index);
     const double coeff = entry.second;
@@ -420,7 +415,7 @@ bool GLOPInterface::SetSolverSpecificParametersAsString(
     const std::string& parameters) {
   // NOTE(user): Android build uses protocol buffers in lite mode, and
   // parsing data from text format is not supported there. To allow solver
-  // specific parameters from std::string on Android, we first need to switch to
+  // specific parameters from string on Android, we first need to switch to
   // non-lite version of protocol buffers.
   if (ProtobufTextFormatMergeFromString(parameters, &parameters_)) {
     lp_solver_.SetParameters(parameters_);

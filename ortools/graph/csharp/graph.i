@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,6 +22,9 @@
 // - examples/csharp/assignment.cs
 // - examples/csharp/csflow.cs
 
+%include "enums.swg"
+%include "stdint.i"
+
 %include "ortools/base/base.i"
 
 %import "ortools/graph/ebert_graph.h"
@@ -38,8 +41,10 @@
 
 %unignore operations_research;
 %rename (MaxFlow) operations_research::SimpleMaxFlow;
+%ignore operations_research::SimpleMaxFlow::GetSourceSideMinCut;  // missing typemap for argument
+%ignore operations_research::SimpleMaxFlow::GetSinkSideMinCut;  // missing typemap for argument
 %unignore operations_research::SimpleMaxFlow::SimpleMaxFlow;
-// %unignore operations_research::SimpleMaxFlow::~SimpleMaxFlow;
+%unignore operations_research::SimpleMaxFlow::~SimpleMaxFlow;
 %unignore operations_research::SimpleMaxFlow::AddArcWithCapacity;
 %unignore operations_research::SimpleMaxFlow::Solve;
 %unignore operations_research::SimpleMaxFlow::NumNodes;
@@ -49,8 +54,6 @@
 %unignore operations_research::SimpleMaxFlow::Capacity;
 %unignore operations_research::SimpleMaxFlow::OptimalFlow;
 %unignore operations_research::SimpleMaxFlow::Flow;
-%unignore operations_research::SimpleMaxFlow::GetSourceSideMinCut;
-%unignore operations_research::SimpleMaxFlow::GetSinkSideMinCut;
 
 // Expose the "operations_research::SimpleMaxFlow::Status" enum.
 %unignore operations_research::SimpleMaxFlow::Status;

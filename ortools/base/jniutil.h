@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,7 +15,9 @@
 #define OR_TOOLS_BASE_JNIUTIL_H_
 
 #include <jni.h>
+
 #include <string>
+
 #include "ortools/base/logging.h"
 
 class JNIUtil {
@@ -27,8 +29,8 @@ class JNIUtil {
     return env->NewStringUTF(cstr);
   }
 
-  // Creates a null-terminated UTF-8 encoded C std::string from a jstring.
-  // The returned std::string should be "delete[]"-ed when no longer needed.
+  // Creates a null-terminated UTF-8 encoded C string from a jstring.
+  // The returned string should be "delete[]"-ed when no longer needed.
   static char* MakeCString(JNIEnv* env, jstring str) {
     if (str == NULL) return NULL;
     jsize length = env->GetStringUTFLength(str);

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include <unordered_set>
+#include "absl/container/flat_hash_set.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/sat/cp_model.pb.h"
@@ -41,18 +41,19 @@ inline int EnforcementLiteral(const ConstraintProto& ct) {
   return ct.enforcement_literal(0);
 }
 
+// Fills the target as negated ref.
+void SetToNegatedLinearExpression(const LinearExpressionProto& input_expr,
+                                  LinearExpressionProto* output_negated_expr);
+
 // Collects all the references used by a constraint. This function is used in a
 // few places to have a "generic" code dealing with constraints. Note that the
-// enforcement_literal is NOT counted here.
-//
-// TODO(user): replace this by constant version of the Apply...() functions?
+// enforcement_literal is NOT counted here and that the vectors can have
+// duplicates.
 struct IndexReferences {
-  std::unordered_set<int> variables;
-  std::unordered_set<int> literals;
-  std::unordered_set<int> intervals;
+  std::vector<int> variables;
+  std::vector<int> literals;
 };
-void AddReferencesUsedByConstraint(const ConstraintProto& ct,
-                                   IndexReferences* output);
+IndexReferences GetReferencesUsedByConstraint(const ConstraintProto& ct);
 
 // Applies the given function to all variables/literals/intervals indices of the
 // constraint. This function is used in a few places to have a "generic" code
@@ -69,7 +70,11 @@ void ApplyToAllIntervalIndices(const std::function<void(int*)>& function,
 std::string ConstraintCaseName(ConstraintProto::ConstraintCase constraint_case);
 
 // Returns the sorted list of variables used by a constraint.
+// Note that this include variable used as a literal.
 std::vector<int> UsedVariables(const ConstraintProto& ct);
+
+// Returns the sorted list of interval used by a constraint.
+std::vector<int> UsedIntervals(const ConstraintProto& ct);
 
 // Returns true if a proto.domain() contain the given value.
 // The domain is expected to be encoded as a sorted disjoint interval list.
@@ -81,31 +86,32 @@ bool DomainInProtoContains(const ProtoWithDomain& proto, int64 value) {
   return false;
 }
 
-// Sets the domain field of a proto from a sorted interval list.
+// Serializes a Domain into the domain field of a proto.
 template <typename ProtoWithDomain>
-void FillDomain(const std::vector<ClosedInterval>& domain,
-                ProtoWithDomain* proto) {
+void FillDomainInProto(const Domain& domain, ProtoWithDomain* proto) {
   proto->clear_domain();
-  CHECK(IntervalsAreSortedAndDisjoint(domain));
+  proto->mutable_domain()->Reserve(domain.NumIntervals());
   for (const ClosedInterval& interval : domain) {
     proto->add_domain(interval.start);
     proto->add_domain(interval.end);
   }
 }
 
-// Extract a sorted interval list from the domain field of a proto.
+// Reads a Domain from the domain field of a proto.
 template <typename ProtoWithDomain>
-std::vector<ClosedInterval> ReadDomain(const ProtoWithDomain& proto) {
-  std::vector<ClosedInterval> result;
-  for (int i = 0; i < proto.domain_size(); i += 2) {
-    result.push_back({proto.domain(i), proto.domain(i + 1)});
-  }
-  CHECK(IntervalsAreSortedAndDisjoint(result));
-  return result;
+Domain ReadDomainFromProto(const ProtoWithDomain& proto) {
+#if defined(__PORTABLE_PLATFORM__)
+  return Domain::FromFlatIntervals(
+      {proto.domain().begin(), proto.domain().end()});
+#else
+  return Domain::FromFlatSpanOfIntervals(proto.domain());
+#endif
 }
 
 // Returns the list of values in a given domain.
 // This will fail if the domain contains more than one millions values.
+//
+// TODO(user): work directly on the Domain class instead.
 template <typename ProtoWithDomain>
 std::vector<int64> AllValuesInDomain(const ProtoWithDomain& proto) {
   std::vector<int64> result;
@@ -117,6 +123,32 @@ std::vector<int64> AllValuesInDomain(const ProtoWithDomain& proto) {
   }
   return result;
 }
+
+// Scales back a objective value to a double value from the original model.
+inline double ScaleObjectiveValue(const CpObjectiveProto& proto, int64 value) {
+  double result = static_cast<double>(value);
+  if (value == kint64min) result = -std::numeric_limits<double>::infinity();
+  if (value == kint64max) result = std::numeric_limits<double>::infinity();
+  result += proto.offset();
+  if (proto.scaling_factor() == 0) return result;
+  return proto.scaling_factor() * result;
+}
+
+// Removes the objective scaling and offset from the given value.
+inline double UnscaleObjectiveValue(const CpObjectiveProto& proto,
+                                    double value) {
+  double result = value;
+  if (proto.scaling_factor() != 0) {
+    result /= proto.scaling_factor();
+  }
+  return result - proto.offset();
+}
+
+// Computes the "inner" objective of a response that contains a solution.
+// This is the objective without offset and scaling. Call ScaleObjectiveValue()
+// to get the user facing objective.
+int64 ComputeInnerObjective(const CpObjectiveProto& objective,
+                            const CpSolverResponse& response);
 
 }  // namespace sat
 }  // namespace operations_research

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -29,6 +29,9 @@
 //
 // TODO(user): test all the APIs that are currently marked as 'untested'.
 
+%include "enums.swg"
+%include "stdint.i"
+
 %include "ortools/base/base.i"
 
 %import "ortools/graph/ebert_graph.h"
@@ -44,7 +47,11 @@
 %ignoreall
 
 %unignore operations_research;
+
+// MaxFlow
 %rename (MaxFlow) operations_research::SimpleMaxFlow;
+%ignore operations_research::SimpleMaxFlow::GetSourceSideMinCut;  // missing typemap for argument
+%ignore operations_research::SimpleMaxFlow::GetSinkSideMinCut;  // missing typemap for argument
 %unignore operations_research::SimpleMaxFlow::SimpleMaxFlow;
 %unignore operations_research::SimpleMaxFlow::~SimpleMaxFlow;
 %rename (addArcWithCapacity) operations_research::SimpleMaxFlow::AddArcWithCapacity;
@@ -57,8 +64,6 @@
 %rename (solve) operations_research::SimpleMaxFlow::Solve;
 %rename (getOptimalFlow) operations_research::SimpleMaxFlow::OptimalFlow;
 %rename (getFlow) operations_research::SimpleMaxFlow::Flow;
-%rename (getSourceSideMinCut) operations_research::SimpleMaxFlow::GetSourceSideMinCut;  // untested
-%rename (getSinkSideMinCut) operations_research::SimpleMaxFlow::GetSinkSideMinCut;  // untested
 
 // To expose the Status enum's values (as constant integers), we must expose the enum
 // type itself.

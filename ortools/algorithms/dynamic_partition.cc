@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,9 +15,9 @@
 
 #include <algorithm>
 
-#include "ortools/base/join.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "ortools/base/murmur.h"
-#include "ortools/base/stringprintf.h"
 
 namespace operations_research {
 
@@ -122,7 +122,7 @@ void DynamicPartition::Refine(const std::vector<int>& distinguished_subset) {
   }
 
   // Sort affected parts. This is important to behave as advertised in the .h.
-  // TODO(user, fdid): automatically switch to an O(N) sort when it's faster
+  // TODO(user,user): automatically switch to an O(N) sort when it's faster
   // than this one, which is O(K log K) with K = tmp_affected_parts_.size().
   std::sort(tmp_affected_parts_.begin(), tmp_affected_parts_.end());
 
@@ -183,7 +183,7 @@ void DynamicPartition::UndoRefineUntilNumPartsEqual(int original_num_parts) {
 
 std::string DynamicPartition::DebugString(DebugStringSorting sorting) const {
   if (sorting != SORT_LEXICOGRAPHICALLY && sorting != SORT_BY_PART) {
-    return StringPrintf("Unsupported sorting: %d", sorting);
+    return absl::StrFormat("Unsupported sorting: %d", sorting);
   }
   std::vector<std::vector<int>> parts;
   for (int i = 0; i < NumParts(); ++i) {
@@ -282,7 +282,7 @@ std::string MergingPartition::DebugString() {
     std::sort(part.begin(), part.end());
   std::sort(sorted_parts.begin(), sorted_parts.end());
   // Note: typically, a lot of elements of "sorted_parts" will be empty,
-  // but these won't be visible in the std::string that we construct below.
+  // but these won't be visible in the string that we construct below.
   std::string out;
   for (const std::vector<int>& part : sorted_parts) {
     if (!out.empty()) out += " | ";

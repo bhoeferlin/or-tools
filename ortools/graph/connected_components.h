@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -42,10 +42,13 @@
 #include <map>
 #include <memory>
 #include <set>
-#include <unordered_map>
-#include <unordered_set>
+#include <type_traits>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
+#include "absl/meta/type_traits.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/map_util.h"
 #include "ortools/base/ptr_util.h"
@@ -64,7 +67,7 @@ namespace util {
 // the one that has the lowest-index node that isn't in component #0, and so on.
 //
 // Example on the following 6-node graph: 5--3--0--1  2--4
-// std::vector<std::vector<int>> graph = {{1, 3}, {0}, {4}, {0, 5}, {2}, {3}};
+// vector<vector<int>> graph = {{1, 3}, {0}, {4}, {0, 5}, {2}, {3}};
 // GetConnectedComponents(graph);  // returns [0, 0, 1, 0, 1, 0].
 template <class UndirectedGraph>
 std::vector<int> GetConnectedComponents(int num_nodes,
@@ -124,35 +127,28 @@ namespace internal {
 // is a comparator or a hasher (prefer the latter).
 template <typename T, typename CompareOrHashT>
 struct ConnectedComponentsTypeHelper {
-  // SFINAE helpers to detect a hash functor.
-  template <typename U, size_t (U::*)(const T&) const>
-  struct hash_by_ref {};
-  template <typename U, size_t (U::*)(T) const>
-  struct hash_by_value {};
+  // SFINAE trait to detect hash functors and select unordered containers if so,
+  // and ordered containers otherwise (= by default).
+  template <typename U, typename E = void>
+  struct SelectContainer {
+    using Set = std::set<T, CompareOrHashT>;
+    using Map = std::map<T, int, CompareOrHashT>;
+  };
 
-  // SFINAE dispatchers that return the right kind of set depending on the
-  // functor.
+  // The expression inside decltype is basically saying that "H(x)" is
+  // well-formed, where H is an instance of U and x is an instance of T, and is
+  // a value of integral type. That is, we are "duck-typing" on whether U looks
+  // like a hash functor.
   template <typename U>
-  static std::unordered_set<T, CompareOrHashT> ReturnSet(
-      hash_by_ref<U, &U::operator()>*);
-  template <typename U>
-  static std::unordered_set<T, CompareOrHashT> ReturnSet(
-      hash_by_value<U, &U::operator()>*);
-  template <typename U>
-  static std::set<T, CompareOrHashT> ReturnSet(...);
-  using Set = decltype(ReturnSet<CompareOrHashT>(nullptr));
+  struct SelectContainer<
+      U, absl::enable_if_t<std::is_integral<decltype(
+             std::declval<const U&>()(std::declval<const T&>()))>::value>> {
+    using Set = absl::flat_hash_set<T, CompareOrHashT>;
+    using Map = absl::flat_hash_map<T, int, CompareOrHashT>;
+  };
 
-  // SFINAE dispatchers that return the right kind of map depending on the
-  // functor.
-  template <typename U>
-  static std::unordered_map<T, int, CompareOrHashT> ReturnMap(
-      hash_by_ref<U, &U::operator()>*);
-  template <typename U>
-  static std::unordered_map<T, int, CompareOrHashT> ReturnMap(
-      hash_by_value<U, &U::operator()>*);
-  template <typename U>
-  static std::map<T, int, CompareOrHashT> ReturnMap(...);
-  using Map = decltype(ReturnMap<CompareOrHashT>(nullptr));
+  using Set = typename SelectContainer<CompareOrHashT>::Set;
+  using Map = typename SelectContainer<CompareOrHashT>::Map;
 };
 
 }  // namespace internal
@@ -165,10 +161,19 @@ struct ConnectedComponentsTypeHelper {
 // ... repeating, adding nodes and edges as needed.  Adding an edge
 // will automatically also add the two nodes at its ends, if they
 // haven't already been added.
-//   std::vector<std::set<MyNodeType> > components;
+//   vector<set<MyNodeType> > components;
 //   cc.FindConnectedComponents(&components);
 // Each entry in components now contains all the nodes in a single
 // connected component.
+//
+// Usage with flat_hash_set:
+//   using ConnectedComponentType = flat_hash_set<MyNodeType>;
+//   ConnectedComponentsFinder<ConnectedComponentType::key_type,
+//                             ConnectedComponentType::hasher>
+//   cc;
+//   ...
+//   vector<ConnectedComponentType> components;
+//   cc.FindConnectedComponents(&components);
 //
 // If you want to, you can continue adding nodes and edges after calling
 // FindConnectedComponents, then call it again later.

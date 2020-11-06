@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -174,11 +174,10 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "ortools/base/integral_types.h"
-#include "ortools/base/join.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/util/permutation.h"
 #include "ortools/util/zvector.h"
 
@@ -798,7 +797,7 @@ class ForwardStaticGraph
     }
   }
 
-  // Returns a debug std::string containing all the information contained in the
+  // Returns a debug string containing all the information contained in the
   // data structure in raw form.
   std::string DebugString() const {
     std::string result = "Arcs:(node) :\n";
@@ -1454,7 +1453,7 @@ class EbertGraph
     representation_clean_ = true;
   }
 
-  // Returns a debug std::string containing all the information contained in the
+  // Returns a debug string containing all the information contained in the
   // data structure in raw form.
   std::string DebugString() const {
     DCHECK(representation_clean_);
@@ -1694,7 +1693,7 @@ class ForwardEbertGraph
     return true;
   }
 
-  // Returns a debug std::string containing all the information contained in the
+  // Returns a debug string containing all the information contained in the
   // data structure in raw form.
   std::string DebugString() const {
     DCHECK(representation_clean_);
@@ -1847,20 +1846,20 @@ class ForwardEbertGraph
 // get errors from tests rather than incomplete testing.
 template <typename GraphType>
 struct graph_traits {
-  static const bool has_reverse_arcs = true;
-  static const bool is_dynamic = true;
+  static constexpr bool has_reverse_arcs = true;
+  static constexpr bool is_dynamic = true;
 };
 
 template <typename NodeIndexType, typename ArcIndexType>
 struct graph_traits<ForwardEbertGraph<NodeIndexType, ArcIndexType> > {
-  static const bool has_reverse_arcs = false;
-  static const bool is_dynamic = true;
+  static constexpr bool has_reverse_arcs = false;
+  static constexpr bool is_dynamic = true;
 };
 
 template <typename NodeIndexType, typename ArcIndexType>
 struct graph_traits<ForwardStaticGraph<NodeIndexType, ArcIndexType> > {
-  static const bool has_reverse_arcs = false;
-  static const bool is_dynamic = false;
+  static constexpr bool has_reverse_arcs = false;
+  static constexpr bool is_dynamic = false;
 };
 
 namespace or_internal {

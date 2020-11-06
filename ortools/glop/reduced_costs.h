@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,6 +22,7 @@
 #include "ortools/glop/variables_info.h"
 #include "ortools/lp_data/lp_data.h"
 #include "ortools/lp_data/lp_types.h"
+#include "ortools/lp_data/scattered_vector.h"
 #include "ortools/util/random_engine.h"
 #include "ortools/util/stats.h"
 
@@ -180,9 +181,7 @@ class ReducedCosts {
   bool IsValidPrimalEnteringCandidate(ColIndex col) const;
 
   // Visible for testing.
-  const DenseRow& GetCostPerturbations() const {
-    return objective_perturbation_;
-  }
+  const DenseRow& GetCostPerturbations() const { return cost_perturbations_; }
 
  private:
   // Statistics about this class.
@@ -256,10 +255,7 @@ class ReducedCosts {
 
   // Perturbations to the objective function. This may be introduced to
   // counter degenerecency. It will be removed at the end of the algorithm.
-  //
-  // TODO(user): rename this cost_perturbations_ to be more consistent with
-  // the literature.
-  DenseRow objective_perturbation_;
+  DenseRow cost_perturbations_;
 
   // Reduced costs of the relevant columns of A.
   DenseRow reduced_costs_;

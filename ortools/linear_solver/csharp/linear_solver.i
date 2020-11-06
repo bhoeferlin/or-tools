@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -28,13 +28,19 @@
 // - examples/csharp/cslinearprogramming.cs
 // - examples/csharp/csintegerprogramming.cs
 
-%include "ortools/base/base.i"
+%include "enums.swg"
+%include "stdint.i"
 %include "std_vector.i"
+
+%include "ortools/base/base.i"
+%include "ortools/util/csharp/vector.i"
 
 %{
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
+#include "ortools/linear_solver/model_exporter.h"
 %}
+
 
 // We need to forward-declare the proto here, so that the PROTO_* macros
 // involving them work correctly. The order matters very much: this declaration
@@ -53,7 +59,18 @@ class MPSolutionResponse;
 %typemap(csclassmodifiers) operations_research::MPVariable "public partial class"
 %typemap(csclassmodifiers) operations_research::MPSolver "public partial class"
 
-%template(MpDoubleVector) std::vector<double>;
+%template(DoubleVector) std::vector<double>;
+VECTOR_AS_CSHARP_ARRAY(double, double, double, DoubleVector);
+
+%define CONVERT_VECTOR(CTYPE, TYPE)
+SWIG_STD_VECTOR_ENHANCED(CTYPE*);
+%template(TYPE ## Vector) std::vector<CTYPE*>;
+%enddef  // CONVERT_VECTOR
+
+CONVERT_VECTOR(operations_research::MPConstraint, MPConstraint)
+CONVERT_VECTOR(operations_research::MPVariable, MPVariable)
+
+#undef CONVERT_VECTOR
 
 %ignoreall
 
@@ -76,8 +93,13 @@ class MPSolutionResponse;
 %unignore operations_research::MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING;
 %unignore operations_research::MPSolver::GUROBI_LINEAR_PROGRAMMING;
 %unignore operations_research::MPSolver::GUROBI_MIXED_INTEGER_PROGRAMMING;
-%unignore operations_research::MPSolver::SULUM_LINEAR_PROGRAMMING;
-%unignore operations_research::MPSolver::SULUM_MIXED_INTEGER_PROGRAMMING;
+%unignore operations_research::MPSolver::SetGurobiLibraryPath;
+%unignore operations_research::MPSolver::CPLEX_LINEAR_PROGRAMMING;
+%unignore operations_research::MPSolver::CPLEX_MIXED_INTEGER_PROGRAMMING;
+%unignore operations_research::MPSolver::XPRESS_LINEAR_PROGRAMMING;
+%unignore operations_research::MPSolver::XPRESS_MIXED_INTEGER_PROGRAMMING;
+%unignore operations_research::MPSolver::BOP_INTEGER_PROGRAMMING;
+%unignore operations_research::MPSolver::SAT_INTEGER_PROGRAMMING;
 
 // Expose the MPSolver::ResultStatus enum.
 %unignore operations_research::MPSolver::ResultStatus;
@@ -102,6 +124,8 @@ class MPSolutionResponse;
 // Expose the MPSolver's basic API, with trivial renames when needed.
 %unignore operations_research::MPSolver::MPSolver;
 %unignore operations_research::MPSolver::~MPSolver;
+%newobject operations_research::MPSolver::CreateSolver;
+%unignore operations_research::MPSolver::CreateSolver;
 %unignore operations_research::MPSolver::MakeBoolVar;
 %unignore operations_research::MPSolver::MakeIntVar;
 %unignore operations_research::MPSolver::MakeNumVar;
@@ -112,12 +136,15 @@ class MPSolutionResponse;
 %rename (SetTimeLimit) operations_research::MPSolver::set_time_limit;
 
 // Expose some of the more advanced MPSolver API.
+%unignore operations_research::MPSolver::InterruptSolve;
 %unignore operations_research::MPSolver::SupportsProblemType;
 %unignore operations_research::MPSolver::SetSolverSpecificParametersAsString;
 %rename (WallTime) operations_research::MPSolver::wall_time;
 %unignore operations_research::MPSolver::Clear;
-%unignore operations_research::MPSolver::NumVariables;
+%unignore operations_research::MPSolver::constraints;
 %unignore operations_research::MPSolver::NumConstraints;
+%unignore operations_research::MPSolver::NumVariables;
+%unignore operations_research::MPSolver::variables;
 %unignore operations_research::MPSolver::EnableOutput;
 %unignore operations_research::MPSolver::SuppressOutput;
 %unignore operations_research::MPSolver::LookupConstraintOrNull;
@@ -138,19 +165,43 @@ class MPSolutionResponse;
 // Extend code.
 %unignore operations_research::MPSolver::ExportModelAsLpFormat(bool);
 %unignore operations_research::MPSolver::ExportModelAsMpsFormat(bool, bool);
+%unignore operations_research::MPSolver::SetHint(
+    const std::vector<operations_research::MPVariable*>&,
+    const std::vector<double>&);
+%unignore operations_research::MPSolver::SetNumThreads;
 %extend operations_research::MPSolver {
   std::string ExportModelAsLpFormat(bool obfuscated) {
-    std::string output;
-    if (!$self->ExportModelAsLpFormat(obfuscated, &output)) return "";
-    return output;
+    operations_research::MPModelExportOptions options;
+    options.obfuscate = obfuscated;
+    operations_research::MPModelProto model;
+    $self->ExportModelToProto(&model);
+    return ExportModelAsLpFormat(model, options).value_or("");
   }
 
   std::string ExportModelAsMpsFormat(bool fixed_format, bool obfuscated) {
-    std::string output;
-    if (!$self->ExportModelAsMpsFormat(fixed_format, obfuscated, &output)) {
-      return "";
+    operations_research::MPModelExportOptions options;
+    options.obfuscate = obfuscated;
+    operations_research::MPModelProto model;
+    $self->ExportModelToProto(&model);
+    return ExportModelAsMpsFormat(model, options).value_or("");
+  }
+
+  void SetHint(const std::vector<operations_research::MPVariable*>& variables,
+               const std::vector<double>& values) {
+    if (variables.size() != values.size()) {
+      LOG(FATAL) << "Different number of variables and values when setting "
+                 << "hint.";
     }
-    return output;
+    std::vector<std::pair<const operations_research::MPVariable*, double> >
+        hint(variables.size());
+    for (int i = 0; i < variables.size(); ++i) {
+      hint[i] = std::make_pair(variables[i], values[i]);
+    }
+    $self->SetHint(hint);
+  }
+
+  bool SetNumThreads(int num_theads) {
+    return $self->SetNumThreads(num_theads).ok();
   }
 }
 
@@ -192,7 +243,6 @@ class MPSolutionResponse;
 %unignore operations_research::MPObjective::SetOptimizationDirection;
 %unignore operations_research::MPObjective::Clear;
 %unignore operations_research::MPObjective::SetOffset;
-%unignore operations_research::MPObjective::AddOffset;
 
 // MPObjective: reader API.
 %unignore operations_research::MPObjective::Value;
@@ -203,18 +253,55 @@ class MPSolutionResponse;
 %unignore operations_research::MPObjective::BestBound;
 
 // MPSolverParameters API. For expert users only.
-%unignore operations_research::MPSolverParameters;
-%unignore operations_research::MPSolverParameters::MPSolverParameters;
-%unignore operations_research::MPSolverParameters::DoubleParam;
-%unignore operations_research::MPSolverParameters::RELATIVE_MIP_GAP;
-%unignore operations_research::MPSolverParameters::GetDoubleParam;
-%unignore operations_research::MPSolverParameters::SetDoubleParam;
-%unignore operations_research::MPSolverParameters::kDefaultPrimalTolerance;
+// TODO(user): unit test all of it.
 
-// We want to ignore the CoeffMap class; but since it inherits from some
-// std::unordered_map<>, swig complains about an undefined base class. Silence it.
-%warnfilter(401) CoeffMap;
+%unignore operations_research::MPSolverParameters;  // no test
+%unignore operations_research::MPSolverParameters::MPSolverParameters;  // no test
+
+// Expose the MPSolverParameters::DoubleParam enum.
+%unignore operations_research::MPSolverParameters::DoubleParam;  // no test
+%unignore operations_research::MPSolverParameters::RELATIVE_MIP_GAP;  // no test
+%unignore operations_research::MPSolverParameters::PRIMAL_TOLERANCE;  // no test
+%unignore operations_research::MPSolverParameters::DUAL_TOLERANCE;  // no test
+%unignore operations_research::MPSolverParameters::GetDoubleParam;  // no test
+%unignore operations_research::MPSolverParameters::SetDoubleParam;  // no test
+%unignore operations_research::MPSolverParameters::kDefaultRelativeMipGap;  // no test
+%unignore operations_research::MPSolverParameters::kDefaultPrimalTolerance;  // no test
+%unignore operations_research::MPSolverParameters::kDefaultDualTolerance;  // no test
+
+// Expose the MPSolverParameters::IntegerParam enum.
+%unignore operations_research::MPSolverParameters::IntegerParam;  // no test
+%unignore operations_research::MPSolverParameters::PRESOLVE;  // no test
+%unignore operations_research::MPSolverParameters::LP_ALGORITHM;  // no test
+%unignore operations_research::MPSolverParameters::INCREMENTALITY;  // no test
+%unignore operations_research::MPSolverParameters::SCALING;  // no test
+%unignore operations_research::MPSolverParameters::GetIntegerParam;  // no test
+%unignore operations_research::MPSolverParameters::SetIntegerParam;  // no test
+
+// Expose the MPSolverParameters::PresolveValues enum.
+%unignore operations_research::MPSolverParameters::PresolveValues;  // no test
+%unignore operations_research::MPSolverParameters::PRESOLVE_OFF;  // no test
+%unignore operations_research::MPSolverParameters::PRESOLVE_ON;  // no test
+%unignore operations_research::MPSolverParameters::kDefaultPresolve;  // no test
+
+// Expose the MPSolverParameters::LpAlgorithmValues enum.
+%unignore operations_research::MPSolverParameters::LpAlgorithmValues;  // no test
+%unignore operations_research::MPSolverParameters::DUAL;  // no test
+%unignore operations_research::MPSolverParameters::PRIMAL;  // no test
+%unignore operations_research::MPSolverParameters::BARRIER;  // no test
+
+// Expose the MPSolverParameters::IncrementalityValues enum.
+%unignore operations_research::MPSolverParameters::IncrementalityValues;  // no test
+%unignore operations_research::MPSolverParameters::INCREMENTALITY_OFF;  // no test
+%unignore operations_research::MPSolverParameters::INCREMENTALITY_ON;  // no test
+%unignore operations_research::MPSolverParameters::kDefaultIncrementality;  // no test
+
+// Expose the MPSolverParameters::ScalingValues enum.
+%unignore operations_research::MPSolverParameters::ScalingValues;  // no test
+%unignore operations_research::MPSolverParameters::SCALING_OFF;  // no test
+%unignore operations_research::MPSolverParameters::SCALING_ON;  // no test
 
 %include "ortools/linear_solver/linear_solver.h"
+%include "ortools/linear_solver/model_exporter.h"
 
 %unignoreall

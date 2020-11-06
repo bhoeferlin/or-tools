@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -19,7 +19,6 @@
 #include "google/protobuf/text_format.h"
 #include "ortools/base/commandlineflags.h"
 #include "ortools/base/stl_util.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/bop/bop_fs.h"
 #include "ortools/bop/bop_lns.h"
 #include "ortools/bop/bop_ls.h"
@@ -35,9 +34,11 @@
 
 namespace operations_research {
 namespace bop {
+
+using ::operations_research::sat::LinearBooleanProblem;
+
 namespace {
 
-using ::operations_research::LinearBooleanProblem;
 using ::operations_research::glop::ColIndex;
 using ::operations_research::glop::DenseRow;
 
@@ -72,7 +73,6 @@ BopSolver::BopSolver(const LinearBooleanProblem& problem)
       parameters_(),
       stats_("BopSolver") {
   SCOPED_TIME_STAT(&stats_);
-  CHECK_OK(sat::ValidateBooleanProblem(problem));
 }
 
 BopSolver::~BopSolver() { IF_STATS_ENABLED(VLOG(1) << stats_.StatString()); }
@@ -86,6 +86,12 @@ BopSolveStatus BopSolver::Solve() {
 BopSolveStatus BopSolver::SolveWithTimeLimit(TimeLimit* time_limit) {
   CHECK(time_limit != nullptr);
   SCOPED_TIME_STAT(&stats_);
+
+  absl::Status valid = sat::ValidateBooleanProblem(problem_);
+  if (!valid.ok()) {
+    LOG(ERROR) << "Invalid Boolean problem: " << valid.message();
+    return BopSolveStatus::INVALID_PROBLEM;
+  }
 
   UpdateParameters();
 
@@ -180,7 +186,7 @@ double BopSolver::GetScaledGap() const {
 
 void BopSolver::UpdateParameters() {
   if (parameters_.solver_optimizer_sets_size() == 0) {
-    // No user defined optimizers, use the default std::string to define the
+    // No user defined optimizers, use the default string to define the
     // behavior.
     CHECK(::google::protobuf::TextFormat::ParseFromString(
         parameters_.default_solver_optimizer_sets(),

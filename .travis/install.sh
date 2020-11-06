@@ -3,112 +3,141 @@ set -x
 set -e
 
 function installswig() {
-	# Need SWIG >= 3.0.8
-	cd /tmp/ &&
-		wget https://github.com/swig/swig/archive/rel-3.0.12.tar.gz &&
-		tar zxf rel-3.0.12.tar.gz && cd swig-rel-3.0.12 &&
-		./autogen.sh && ./configure --prefix "${HOME}"/swig/ 1>/dev/null &&
-		make >/dev/null &&
-		make install >/dev/null
-}
-
-function installmono() {
-	# Need mono >= 4.2 cf. makefiles/Makefile.port.mk:87
-	# http://www.mono-project.com/download/stable/
-	sudo apt-key adv \
-		--keyserver hkp://keyserver.ubuntu.com:80 \
-		--recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF &&
-		echo "deb http://download.mono-project.com/repo/ubuntu stable-trusty main" | \
-		sudo tee /etc/apt/sources.list.d/mono-official-stable.list &&
-		sudo apt-get update -qq &&
-		sudo apt-get install -yqq mono-complete
+  # Need SWIG >= 4.0.0
+  cd /tmp/ &&
+    wget https://github.com/swig/swig/archive/rel-4.0.2.tar.gz &&
+    tar zxf rel-4.0.2.tar.gz && cd swig-rel-4.0.2 &&
+    ./autogen.sh && ./configure --prefix "${HOME}"/swig/ 1>/dev/null &&
+    make >/dev/null &&
+    make install >/dev/null
 }
 
 function installdotnetsdk(){
-		# Installs for Ubuntu Trusty distro
-		curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg &&
-		sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg &&
-		sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-trusty-prod trusty main" > /etc/apt/sources.list.d/dotnetdev.list' &&
-		# Install dotnet sdk 2.1
-		sudo apt-get install apt-transport-https &&
-		sudo apt-get update -qq &&
-		sudo apt-get install -yqq dotnet-sdk-2.1
+  # Installs for Ubuntu Trusty distro
+  sudo apt-get update -qq
+  # Need to upgrade to dpkg >= 1.17.5ubuntu5.8,
+  # which fixes https://bugs.launchpad.net/ubuntu/+source/dpkg/+bug/1730627
+  sudo apt-get install -yq apt-transport-https dpkg
+  wget -q https://packages.microsoft.com/config/ubuntu/16.04/packages-microsoft-prod.deb
+  sudo dpkg -i packages-microsoft-prod.deb
+  # Install dotnet sdk 2.1
+  sudo apt-get update -qq
+  sudo apt-get install -yqq dotnet-sdk-2.2 dotnet-sdk-3.0
+}
+
+function installcmake(){
+  # Install CMake 3.18.1
+  wget "https://cmake.org/files/v3.18/cmake-3.18.1-Linux-x86_64.sh"
+  chmod a+x cmake-3.18.1-Linux-x86_64.sh
+  sudo ./cmake-3.18.1-Linux-x86_64.sh --prefix=/usr/local/ --skip-license
+  rm cmake-3.18.1-Linux-x86_64.sh
 }
 
 ################
 ##  MAKEFILE  ##
 ################
 if [ "${BUILDER}" == make ]; then
-	if [ "${TRAVIS_OS_NAME}" == linux ]; then
-		if [ "${DISTRO}" == native ]; then
-			sudo apt-get -qq update
-			sudo apt-get -yqq install autoconf libtool zlib1g-dev gawk curl	lsb-release
-			if [ "${LANGUAGE}" != cc ]; then
-				installswig
-			fi
-			if [ "${LANGUAGE}" == python ]; then
-				pyenv global system 3.6;
-				python3.6 -m pip install -q virtualenv wheel six;
-			elif [ "${LANGUAGE}" == dotnet ]; then
-				#installmono
-				sudo apt-get -yqq install fsharp
-				installdotnetsdk
-			fi
-		else
-			# Linux Docker Makefile build:
-			echo "NOT SUPPORTED"
-			exit 42
-		fi
-	elif [ "${TRAVIS_OS_NAME}" == osx ]; then
-		if [ "${DISTRO}" == native ]; then
-			brew update;
-			brew install make --with-default-names;
-			if [ "${LANGUAGE}" != cc ]; then
-				brew install swig;
-			fi
-			if [ "${LANGUAGE}" == python ]; then
-				brew upgrade python;
-				python3 -m pip install -q virtualenv wheel six;
-			elif [ "${LANGUAGE}" == java ]; then
-				brew cask install java;
-			elif [ "${LANGUAGE}" == dotnet ]; then
-				#brew install mono;
-				# Installer changes path but won't be picked up in current terminal session
-				# Need to explicitly add location (see Makefile.fsharp.mk)
-				brew tap caskroom/cask
-				brew cask install dotnet-sdk;
-			fi
-		else
-			# MacOS Docker Makefile build:
-			echo "NOT SUPPORTED"
-			exit 42
-		fi
-	fi
+  echo 'TRAVIS_OS_NAME = ${TRAVIS_OS_NAME}'
+  if [ "${TRAVIS_OS_NAME}" == linux ]; then
+    echo 'travis_fold:start:c++'
+    sudo apt-get -qq update
+    sudo apt-get -yqq install autoconf libtool zlib1g-dev gawk curl lsb-release
+    echo 'travis_fold:end:c++'
+    if [ "${LANGUAGE}" != cc ]; then
+      echo 'travis_fold:start:swig'
+      installswig
+      echo 'travis_fold:end:swig'
+    fi
+    if [ "${LANGUAGE}" == python3 ]; then
+      echo 'travis_fold:start:python3'
+      pyenv global system 3.7
+      python3.7 -m pip install -q virtualenv wheel six
+      echo 'travis_fold:end:python3'
+    elif [ "${LANGUAGE}" == dotnet ]; then
+      echo 'travis_fold:start:dotnet'
+      installdotnetsdk
+      echo 'travis_fold:end:dotnet'
+    fi
+  elif [ "${TRAVIS_OS_NAME}" == linux-ppc64le ]; then
+    echo 'travis_fold:start:c++'
+    sudo apt-get -qq update
+    sudo apt-get -yqq install autoconf libtool zlib1g-dev gawk curl lsb-release
+    echo 'travis_fold:end:c++'
+    if [ "${LANGUAGE}" != cc ]; then
+      echo 'travis_fold:start:swig'
+      installswig
+      echo 'travis_fold:end:swig'
+    fi
+    if [ "${LANGUAGE}" == python3 ]; then
+      echo 'travis_fold:start:python3'
+      pyenv global system 3.7
+      python3.7 -m pip install -q virtualenv wheel six
+      echo 'travis_fold:end:python3'
+    elif [ "${LANGUAGE}" == dotnet ]; then
+      echo 'travis_fold:start:dotnet'
+      installdotnetsdk
+      echo 'travis_fold:end:dotnet'
+    fi
+  elif [ "${TRAVIS_OS_NAME}" == osx ]; then
+    echo 'travis_fold:start:c++'
+    brew update
+    # see https://github.com/travis-ci/travis-ci/issues/10275
+    brew install gcc || brew link --overwrite gcc
+    brew install make ccache
+    echo 'travis_fold:end:c++'
+    if [ "${LANGUAGE}" != cc ]; then
+      echo 'travis_fold:start:swig'
+      brew install swig
+      echo 'travis_fold:end:swig'
+    fi
+    if [ "${LANGUAGE}" == python3 ]; then
+      echo 'travis_fold:start:python3'
+      # brew upgrade python
+      python3 -m pip install -q virtualenv wheel six
+      echo 'travis_fold:end:python3'
+    elif [ "${LANGUAGE}" == dotnet ]; then
+      echo 'travis_fold:start:dotnet'
+      brew cask install dotnet-sdk
+      echo 'travis_fold:end:dotnet'
+    fi
+  fi
 fi
 
 #############
 ##  CMAKE  ##
 #############
 if [ "${BUILDER}" == cmake ]; then
-	if [ "${TRAVIS_OS_NAME}" == linux ]; then
-		if [ "${DISTRO}" == native ]; then
-			installswig
-			pyenv global system 3.6;
-			python3.6 -m pip install -q virtualenv wheel six;
-		else
-			# Linux Docker CMake build:
-			echo "NOT SUPPORTED"
-			exit 42
-		fi
-	elif [ "${TRAVIS_OS_NAME}" == osx ]; then
-		if [ "${DISTRO}" == native ]; then
-			brew update;
-			brew install swig;
-			brew upgrade python3;
-		else
-			# MacOS Docker CMake build:
-			echo "NOT SUPPORTED"
-			exit 42
-		fi
-	fi
+  if [ "${TRAVIS_OS_NAME}" == linux ]; then
+    installcmake
+    if [ "${LANGUAGE}" != cc ]; then
+      echo 'travis_fold:start:swig'
+      installswig
+      echo 'travis_fold:end:swig'
+      echo 'travis_fold:start:python3'
+      if [ "${ARCH}" == "amd64" ]; then
+        pyenv global system 3.7
+        python3.7 -m pip install -q virtualenv wheel six
+      elif [ "${ARCH}" == "ppc64le" ]; then
+        sudo apt-get install python3-dev python3-pip
+        python3.5 -m pip install -q virtualenv wheel six
+      elif [ "${ARCH}" == "amd64" ]; then
+        sudo apt-get install python3-dev python3-pip pcre-dev
+        python3 -m pip install -q virtualenv wheel six
+      fi
+      echo 'travis_fold:end:python3'
+    fi
+  elif [ "${TRAVIS_OS_NAME}" == osx ]; then
+    echo 'travis_fold:start:c++'
+    brew update
+    # see https://github.com/travis-ci/travis-ci/issues/10275
+    brew install gcc || brew link --overwrite gcc
+    brew install make ccache
+    echo 'travis_fold:end:c++'
+    echo 'travis_fold:start:swig'
+    brew install swig
+    echo 'travis_fold:end:swig'
+    # echo 'travis_fold:start:python3'
+    # brew upgrade python
+    # echo 'travis_fold:end:python3'
+  fi
 fi

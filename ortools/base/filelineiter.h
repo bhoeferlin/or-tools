@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -18,18 +18,16 @@
 // * The lines are separated by '\n' (which is removed by default) and have no
 //   size limits.
 // * Consecutive '\n' result in empty lines being produced.
-// * If not empty, the std::string after the last '\n' is produced as the last
-// line.
+// * If not empty, the string after the last '\n' is produced as the last line.
 // * Options are available to keep the trailing '\n' for each line, to remove
 //   carriage-return chararters ('\r'), and to remove blank lines.
 //
 #ifndef OR_TOOLS_UTIL_FILELINEITER_H_
 #define OR_TOOLS_UTIL_FILELINEITER_H_
 
+#include "absl/strings/match.h"
 #include "ortools/base/file.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/stringpiece_utils.h"
-#include "ortools/base/strutil.h"
 
 // Implements the minimum interface for a range-based for loop iterator.
 class FileLineIterator {
@@ -105,7 +103,7 @@ class FileLineIterator {
     }
   }
 
-  static const int kBufferSize = 5 * 1024;
+  static constexpr int kBufferSize = 5 * 1024;
   char buffer_[kBufferSize];
   int next_position_after_eol_;
   int64 buffer_size_;

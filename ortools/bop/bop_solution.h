@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -30,7 +30,8 @@ namespace bop {
 // the feasibility.
 class BopSolution {
  public:
-  BopSolution(const LinearBooleanProblem& problem, const std::string& name);
+  BopSolution(const sat::LinearBooleanProblem& problem,
+              const std::string& name);
 
   void SetValue(VariableIndex var, bool value) {
     recompute_cost_ = true;
@@ -93,7 +94,7 @@ class BopSolution {
   bool ComputeIsFeasible() const;
   int64 ComputeCost() const;
 
-  const LinearBooleanProblem* problem_;
+  const sat::LinearBooleanProblem* problem_;
   std::string name_;
   gtl::ITIVector<VariableIndex, bool> values_;
 

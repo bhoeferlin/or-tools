@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,13 +14,14 @@
 #include "ortools/flatzinc/model.h"
 
 #include <set>
-#include <unordered_set>
 #include <vector>
 
-#include "ortools/base/join.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "ortools/base/map_util.h"
 #include "ortools/base/stl_util.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/flatzinc/logging.h"
 
 namespace operations_research {
@@ -214,7 +215,7 @@ bool Domain::IntersectWithListOfIntegers(const std::vector<int64>& integers) {
   } else {
     // TODO(user): Investigate faster code for small arrays.
     std::sort(values.begin(), values.end());
-    std::unordered_set<int64> other_values(integers.begin(), integers.end());
+    absl::flat_hash_set<int64> other_values(integers.begin(), integers.end());
     std::vector<int64> new_values;
     new_values.reserve(std::min(values.size(), integers.size()));
     bool changed = false;
@@ -296,10 +297,10 @@ bool Domain::OverlapsIntList(const std::vector<int64>& vec) const {
     // TODO(user): Better algorithm, sort and compare increasingly.
     const std::vector<int64>& to_scan =
         values.size() <= vec.size() ? values : vec;
-    const std::unordered_set<int64> container =
+    const absl::flat_hash_set<int64> container =
         values.size() <= vec.size()
-            ? std::unordered_set<int64>(vec.begin(), vec.end())
-            : std::unordered_set<int64>(values.begin(), values.end());
+            ? absl::flat_hash_set<int64>(vec.begin(), vec.end())
+            : absl::flat_hash_set<int64>(values.begin(), values.end());
     for (int64 value : to_scan) {
       if (gtl::ContainsKey(container, value)) {
         return true;
@@ -371,13 +372,12 @@ std::string Domain::DebugString() const {
     if (values.empty()) {
       return "int";
     } else {
-      return absl::StrFormat("[%" GG_LL_FORMAT "d..%" GG_LL_FORMAT "d]",
-                             values[0], values[1]);
+      return absl::StrFormat("[%d..%d]", values[0], values[1]);
     }
   } else if (values.size() == 1) {
     return absl::StrCat(values.back());
   } else {
-    return StringPrintf("[%s]", absl::StrJoin(values, ", ").c_str());
+    return absl::StrFormat("[%s]", absl::StrJoin(values, ", "));
   }
 }
 
@@ -447,14 +447,13 @@ Argument Argument::FromDomain(const Domain& domain) {
 std::string Argument::DebugString() const {
   switch (type) {
     case INT_VALUE:
-      return absl::StrFormat("% " GG_LL_FORMAT "d", values[0]);
+      return absl::StrFormat("% d", values[0]);
     case INT_INTERVAL:
-      return absl::StrFormat("[%" GG_LL_FORMAT "d..%" GG_LL_FORMAT "d]",
-                             values[0], values[1]);
+      return absl::StrFormat("[%d..%d]", values[0], values[1]);
     case INT_LIST:
-      return StringPrintf("[%s]", absl::StrJoin(values, ", ").c_str());
+      return absl::StrFormat("[%s]", absl::StrJoin(values, ", "));
     case DOMAIN_LIST:
-      return StringPrintf("[%s]", JoinDebugString(domains, ", ").c_str());
+      return absl::StrFormat("[%s]", JoinDebugString(domains, ", "));
     case INT_VAR_REF:
       return variables[0]->name;
     case INT_VAR_REF_ARRAY: {
@@ -542,7 +541,7 @@ bool Argument::Contains(int64 value) const {
     }
     default: {
       LOG(FATAL) << "Cannot call Contains() on " << DebugString();
-      return 0;
+      return false;
     }
   }
 }
@@ -584,33 +583,17 @@ IntegerVariable* Argument::VarAt(int pos) const {
 
 IntegerVariable::IntegerVariable(const std::string& name_,
                                  const Domain& domain_, bool temporary_)
-    : name(name_),
-      domain(domain_),
-      defining_constraint(nullptr),
-      temporary(temporary_),
-      active(true) {
+    : name(name_), domain(domain_), temporary(temporary_), active(true) {
   if (!domain.is_interval) {
     gtl::STLSortAndRemoveDuplicates(&domain.values);
   }
 }
 
 bool IntegerVariable::Merge(const std::string& other_name,
-                            const Domain& other_domain,
-                            Constraint* const other_constraint,
-                            bool other_temporary) {
-  if (defining_constraint != nullptr && other_constraint != nullptr) {
-    // Both are defined, we cannot merge the two variables.
-    return false;
-  }
+                            const Domain& other_domain, bool other_temporary) {
   if (temporary && !other_temporary) {
     temporary = false;
     name = other_name;
-  }
-  if (defining_constraint == nullptr) {
-    defining_constraint = other_constraint;
-    if (defining_constraint != nullptr) {
-      defining_constraint->target_variable = this;
-    }
   }
   domain.IntersectWithDomain(other_domain);
   return true;
@@ -618,13 +601,11 @@ bool IntegerVariable::Merge(const std::string& other_name,
 
 std::string IntegerVariable::DebugString() const {
   if (!domain.is_interval && domain.values.size() == 1) {
-    return absl::StrFormat("% " GG_LL_FORMAT "d", domain.values.back());
+    return absl::StrFormat("% d", domain.values.back());
   } else {
-    return StringPrintf(
-        "%s(%s%s%s)%s", name.c_str(), domain.DebugString().c_str(),
-        temporary ? ", temporary" : "",
-        defining_constraint != nullptr ? ", target_variable" : "",
-        active ? "" : " [removed during presolve]");
+    return absl::StrFormat("%s(%s%s)%s", name, domain.DebugString(),
+                           temporary ? ", temporary" : "",
+                           active ? "" : " [removed during presolve]");
   }
 }
 
@@ -636,13 +617,8 @@ std::string Constraint::DebugString() const {
       active ? ""
              : (presolve_propagation_done ? "[propagated during presolve]"
                                           : "[removed during presolve]");
-  const std::string target =
-      target_variable != nullptr
-          ? StringPrintf(" => %s", target_variable->name.c_str())
-          : "";
-  return StringPrintf("%s(%s)%s %s %s", type.c_str(),
-                      JoinDebugString(arguments, ", ").c_str(), target.c_str(),
-                      strong.c_str(), presolve_status_str.c_str());
+  return absl::StrFormat("%s(%s)%s %s", type, JoinDebugString(arguments, ", "),
+                         strong, presolve_status_str);
 }
 
 void Constraint::RemoveArg(int arg_pos) {
@@ -650,28 +626,13 @@ void Constraint::RemoveArg(int arg_pos) {
 }
 
 void Constraint::MarkAsInactive() {
-  RemoveTargetVariable();
   active = false;
   // TODO(user): Reclaim arguments and memory.
 }
 
 void Constraint::SetAsFalse() {
-  RemoveTargetVariable();
   type = "false_constraint";
   arguments.clear();
-}
-
-void Constraint::RemoveTargetVariable() {
-  if (target_variable != nullptr) {
-    if (target_variable->defining_constraint == this) {
-      FZVLOG << "  - remove target_variable from " << DebugString() << FZENDL;
-      target_variable->defining_constraint = nullptr;
-      target_variable = nullptr;
-    } else {
-      FZVLOG << "  - asymmetric relation " << DebugString() << FZENDL;
-      target_variable = nullptr;
-    }
-  }
 }
 
 // ----- Annotation -----
@@ -777,18 +738,16 @@ void Annotation::AppendAllIntegerVariables(
 std::string Annotation::DebugString() const {
   switch (type) {
     case ANNOTATION_LIST: {
-      return StringPrintf("[%s]", JoinDebugString(annotations, ", ").c_str());
+      return absl::StrFormat("[%s]", JoinDebugString(annotations, ", "));
     }
     case IDENTIFIER: {
       return id;
     }
     case FUNCTION_CALL: {
-      return StringPrintf("%s(%s)", id.c_str(),
-                          JoinDebugString(annotations, ", ").c_str());
+      return absl::StrFormat("%s(%s)", id, JoinDebugString(annotations, ", "));
     }
     case INTERVAL: {
-      return absl::StrFormat("%" GG_LL_FORMAT "d..%" GG_LL_FORMAT "d",
-                             interval_min, interval_max);
+      return absl::StrFormat("%d..%d", interval_min, interval_max);
     }
     case INT_VALUE: {
       return absl::StrCat(interval_min);
@@ -805,7 +764,7 @@ std::string Annotation::DebugString() const {
       return result;
     }
     case STRING_VALUE: {
-      return StringPrintf("\"%s\"", string_value.c_str());
+      return absl::StrFormat("\"%s\"", string_value);
     }
   }
   LOG(FATAL) << "Unhandled case in DebugString " << static_cast<int>(type);
@@ -815,8 +774,7 @@ std::string Annotation::DebugString() const {
 // ----- SolutionOutputSpecs -----
 
 std::string SolutionOutputSpecs::Bounds::DebugString() const {
-  return absl::StrFormat("%" GG_LL_FORMAT "d..%" GG_LL_FORMAT "d", min_value,
-                         max_value);
+  return absl::StrFormat("%d..%d", min_value, max_value);
 }
 
 SolutionOutputSpecs SolutionOutputSpecs::SingleVariable(
@@ -850,11 +808,11 @@ SolutionOutputSpecs SolutionOutputSpecs::VoidOutput() {
 
 std::string SolutionOutputSpecs::DebugString() const {
   if (variable != nullptr) {
-    return StringPrintf("output_var(%s)", variable->name.c_str());
+    return absl::StrFormat("output_var(%s)", variable->name);
   } else {
-    return StringPrintf("output_array([%s] [%s])",
-                        JoinDebugString(bounds, ", ").c_str(),
-                        JoinNameFieldPtr(flat_variables, ", ").c_str());
+    return absl::StrFormat("output_array([%s] [%s])",
+                           JoinDebugString(bounds, ", "),
+                           JoinNameFieldPtr(flat_variables, ", "));
   }
 }
 
@@ -881,19 +839,15 @@ IntegerVariable* Model::AddConstant(int64 value) {
 }
 
 void Model::AddConstraint(const std::string& id,
-                          std::vector<Argument> arguments, bool is_domain,
-                          IntegerVariable* defines) {
+                          std::vector<Argument> arguments, bool is_domain) {
   Constraint* const constraint =
-      new Constraint(id, std::move(arguments), is_domain, defines);
+      new Constraint(id, std::move(arguments), is_domain);
   constraints_.push_back(constraint);
-  if (defines != nullptr) {
-    defines->defining_constraint = constraint;
-  }
 }
 
 void Model::AddConstraint(const std::string& id,
                           std::vector<Argument> arguments) {
-  AddConstraint(id, std::move(arguments), false, nullptr);
+  AddConstraint(id, std::move(arguments), false);
 }
 
 void Model::AddOutput(SolutionOutputSpecs output) {
@@ -920,27 +874,27 @@ void Model::Maximize(IntegerVariable* obj,
 }
 
 std::string Model::DebugString() const {
-  std::string output = StringPrintf("Model %s\nVariables\n", name_.c_str());
+  std::string output = absl::StrFormat("Model %s\nVariables\n", name_);
   for (int i = 0; i < variables_.size(); ++i) {
-    StringAppendF(&output, "  %s\n", variables_[i]->DebugString().c_str());
+    absl::StrAppendFormat(&output, "  %s\n", variables_[i]->DebugString());
   }
   output.append("Constraints\n");
   for (int i = 0; i < constraints_.size(); ++i) {
     if (constraints_[i] != nullptr) {
-      StringAppendF(&output, "  %s\n", constraints_[i]->DebugString().c_str());
+      absl::StrAppendFormat(&output, "  %s\n", constraints_[i]->DebugString());
     }
   }
   if (objective_ != nullptr) {
-    StringAppendF(&output, "%s %s\n  %s\n", maximize_ ? "Maximize" : "Minimize",
-                  objective_->name.c_str(),
-                  JoinDebugString(search_annotations_, ", ").c_str());
+    absl::StrAppendFormat(&output, "%s %s\n  %s\n",
+                          maximize_ ? "Maximize" : "Minimize", objective_->name,
+                          JoinDebugString(search_annotations_, ", "));
   } else {
-    StringAppendF(&output, "Satisfy\n  %s\n",
-                  JoinDebugString(search_annotations_, ", ").c_str());
+    absl::StrAppendFormat(&output, "Satisfy\n  %s\n",
+                          JoinDebugString(search_annotations_, ", "));
   }
   output.append("Output\n");
   for (int i = 0; i < output_.size(); ++i) {
-    StringAppendF(&output, "  %s\n", output_[i].DebugString().c_str());
+    absl::StrAppendFormat(&output, "  %s\n", output_[i].DebugString());
   }
 
   return output;
@@ -982,7 +936,7 @@ void ModelStatistics::BuildStatistics() {
   for (Constraint* const ct : model_.constraints()) {
     if (ct != nullptr && ct->active) {
       constraints_per_type_[ct->type].push_back(ct);
-      std::unordered_set<const IntegerVariable*> marked;
+      absl::flat_hash_set<const IntegerVariable*> marked;
       for (const Argument& arg : ct->arguments) {
         for (IntegerVariable* const var : arg.variables) {
           marked.insert(var);
@@ -994,5 +948,18 @@ void ModelStatistics::BuildStatistics() {
     }
   }
 }
+
+// Flatten Search annotations.
+void FlattenAnnotations(const Annotation& ann, std::vector<Annotation>* out) {
+  if (ann.type == Annotation::ANNOTATION_LIST ||
+      ann.IsFunctionCallWithIdentifier("seq_search")) {
+    for (const Annotation& inner : ann.annotations) {
+      FlattenAnnotations(inner, out);
+    }
+  } else {
+    out->push_back(ann);
+  }
+}
+
 }  // namespace fz
 }  // namespace operations_research

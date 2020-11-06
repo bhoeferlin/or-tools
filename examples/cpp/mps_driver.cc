@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,23 +15,24 @@
 // the linear_solver.proto format.
 
 #include <stdio.h>
+
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "google/protobuf/text_format.h"
 #include "ortools/base/commandlineflags.h"
 #include "ortools/base/file.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/status.h"
-#include "ortools/base/stringpiece_utils.h"
-#include "ortools/base/strutil.h"
 #include "ortools/base/timer.h"
 #include "ortools/glop/lp_solver.h"
 #include "ortools/glop/parameters.pb.h"
 #include "ortools/lp_data/lp_print_utils.h"
 #include "ortools/lp_data/mps_reader.h"
 #include "ortools/lp_data/proto_utils.h"
+#include "ortools/util/file_util.h"
 #include "ortools/util/proto_tools.h"
 
 DEFINE_bool(mps_dump_problem, false, "Dumps problem in readable form.");
@@ -50,6 +51,7 @@ DEFINE_string(params, "",
 
 using google::protobuf::TextFormat;
 using operations_research::FullProtocolMessageAsString;
+using operations_research::ReadFileToProto;
 using operations_research::glop::GetProblemStatusString;
 using operations_research::glop::GlopParameters;
 using operations_research::glop::LinearProgram;
@@ -89,15 +91,16 @@ int main(int argc, char* argv[]) {
     const std::string& file_name = file_list[i];
     MPSReader mps_reader;
     operations_research::MPModelProto model_proto;
-    if (strings::EndsWith(file_name, ".mps") ||
-        strings::EndsWith(file_name, ".mps.gz")) {
-      if (!mps_reader.LoadFileAndTryFreeFormOnFail(file_name,
-                                                   &linear_program)) {
-        LOG(INFO) << "Parse error for " << file_name;
+    if (absl::EndsWith(file_name, ".mps") ||
+        absl::EndsWith(file_name, ".mps.gz")) {
+      const absl::Status parse_status =
+          mps_reader.ParseFile(file_name, &linear_program);
+      if (!parse_status.ok()) {
+        LOG(INFO) << "Parse error for " << file_name << ": " << parse_status;
         continue;
       }
     } else {
-      file::ReadFileToProto(file_name, &model_proto);
+      ReadFileToProto(file_name, &model_proto);
       MPModelProtoToLinearProgram(model_proto, &linear_program);
     }
     if (FLAGS_mps_dump_problem) {
@@ -123,7 +126,7 @@ int main(int argc, char* argv[]) {
       if (FLAGS_mps_display_full_path) {
         printf("%s,", file_name.c_str());
       }
-      printf("%s,", mps_reader.GetProblemName().c_str());
+      printf("%s,", linear_program.name().c_str());
       if (FLAGS_mps_solve) {
         printf("%15.15e,%s,%-6.4g,", objective_value, status_string.c_str(),
                solving_time_in_sec);
@@ -136,8 +139,7 @@ int main(int argc, char* argv[]) {
       if (FLAGS_mps_display_full_path) {
         printf("%-45s: %s\n", "File path", file_name.c_str());
       }
-      printf("%-45s: %s\n", "Problem name",
-             mps_reader.GetProblemName().c_str());
+      printf("%-45s: %s\n", "Problem name", linear_program.name().c_str());
       if (FLAGS_mps_solve) {
         printf("%-45s: %15.15e\n", "Objective value", objective_value);
         printf("%-45s: %s\n", "Problem status", status_string.c_str());

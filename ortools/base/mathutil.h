@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,11 +15,12 @@
 #define OR_TOOLS_BASE_MATHUTIL_H_
 
 #include <math.h>
+
 #include <algorithm>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "ortools/base/basictypes.h"
-#include "ortools/base/casts.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
@@ -113,6 +114,28 @@ class MathUtil {
     }
     return x;
   }
+
+  template <typename T>
+  static T IPow(T base, int exp) {
+    return pow(base, exp);
+  }
+
+  template <class IntOut, class FloatIn>
+  static IntOut Round(FloatIn x) {
+    // We don't use sgn(x) below because there is no need to distinguish the
+    // (x == 0) case.  Also note that there are specialized faster versions
+    // of this function for Intel, ARM and PPC processors at the bottom
+    // of this file.
+    if (x > -0.5 && x < 0.5) {
+      // This case is special, because for largest floating point number
+      // below 0.5, the addition of 0.5 yields 1 and this would lead
+      // to incorrect result.
+      return static_cast<IntOut>(0);
+    }
+    return static_cast<IntOut>(x < 0 ? (x - 0.5) : (x + 0.5));
+  }
+
+  static int64 FastInt64Round(double x) { return Round<int64>(x); }
 };
 }  // namespace operations_research
 

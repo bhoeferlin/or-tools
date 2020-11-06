@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -11,11 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Optimization algorithms to solve a LinearBooleanProblem by using the SAT
-// solver as a black-box.
-//
-// TODO(user): Currently, only the MINIMIZATION problem type is supported.
-
 #ifndef OR_TOOLS_SAT_OPTIMIZATION_H_
 #define OR_TOOLS_SAT_OPTIMIZATION_H_
 
@@ -23,6 +18,7 @@
 #include <vector>
 
 #include "ortools/sat/boolean_problem.pb.h"
+#include "ortools/sat/cp_model_loader.h"
 #include "ortools/sat/integer.h"
 #include "ortools/sat/integer_search.h"
 #include "ortools/sat/model.h"
@@ -31,15 +27,6 @@
 
 namespace operations_research {
 namespace sat {
-
-// Tries to minimize the given UNSAT core with a really simple heuristic.
-// The idea is to remove literals that are consequences of others in the core.
-// We already know that in the initial order, no literal is propagated by the
-// one before it, so we just look for propagation in the reverse order.
-//
-// Important: The given SatSolver must be the one that just produced the given
-// core.
-void MinimizeCore(SatSolver* solver, std::vector<Literal>* core);
 
 // Like MinimizeCore() with a slower but strictly better heuristic. This
 // algorithm should produce a minimal core with respect to propagation. We put
@@ -86,7 +73,7 @@ SatSolver::Status SolveWithFuMalik(LogBehavior log,
 //
 // Ansotegui, C., Bonet, M.L., Levy, J.: Solving (weighted) partial MaxSAT
 // through satisﬁability testing. In: Proc. of the 12th Int. Conf. on Theory and
-// Applications of Satisﬁability Testing (SAT’09). pp. 427–440 (2009)
+// Applications of Satisﬁability Testing (SAT’09). pp. 427-440 (2009)
 SatSolver::Status SolveWithWPM1(LogBehavior log,
                                 const LinearBooleanProblem& problem,
                                 SatSolver* solver, std::vector<bool>* solution);
@@ -126,44 +113,101 @@ SatSolver::Status SolveWithCardinalityEncodingAndCore(
     std::vector<bool>* solution);
 
 // Model-based API, for now we just provide a basic algorithm that minimizes a
-// given IntegerVariable by solving a sequence of decision problem.
+// given IntegerVariable by solving a sequence of decision problem by using
+// SolveIntegerProblem(). Returns the status of the last solved decision
+// problem.
 //
-// The "observer" function will be called each time a new feasible solution is
-// found.
-SatSolver::Status MinimizeIntegerVariableWithLinearScan(
-    IntegerVariable objective_var,
-    const std::function<void(const Model&)>& feasible_solution_observer,
-    Model* model);
-
-// Same as MinimizeIntegerVariableWithLinearScan() but keep solving the problem
-// as long as next_decision() do not return kNoLiteralIndex and hence lazily
-// encode new variables. See the doc of SolveIntegerProblemWithLazyEncoding()
-// for more details.
+// The feasible_solution_observer function will be called each time a new
+// feasible solution is found.
+//
+// Note that this function will resume the search from the current state of the
+// solver, and it is up to the client to backtrack to the root node if needed.
 SatSolver::Status MinimizeIntegerVariableWithLinearScanAndLazyEncoding(
-    bool log_info, IntegerVariable objective_var,
-    const std::function<LiteralIndex()>& next_decision,
-    const std::function<void(const Model&)>& feasible_solution_observer,
-    Model* model);
+    IntegerVariable objective_var,
+    const std::function<void()>& feasible_solution_observer, Model* model);
 
 // Use a low conflict limit and performs a binary search to try to restrict the
 // domain of objective_var.
 void RestrictObjectiveDomainWithBinarySearch(
     IntegerVariable objective_var,
-    const std::function<LiteralIndex()>& next_decision,
-    const std::function<void(const Model&)>& feasible_solution_observer,
-    Model* model);
+    const std::function<void()>& feasible_solution_observer, Model* model);
 
 // Same as MinimizeIntegerVariableWithLinearScanAndLazyEncoding() but use
 // a core-based approach instead. Note that the given objective_var is just used
-// for reporting the lower-bound and do not need to be linked with its linear
-// representation.
-SatSolver::Status MinimizeWithCoreAndLazyEncoding(
-    bool log_info, IntegerVariable objective_var,
-    const std::vector<IntegerVariable>& variables,
-    const std::vector<IntegerValue>& coefficients,
-    const std::function<LiteralIndex()>& next_decision,
-    const std::function<void(const Model&)>& feasible_solution_observer,
-    Model* model);
+// for reporting the lower-bound/upper-bound and do not need to be linked with
+// its linear representation.
+//
+// Unlike MinimizeIntegerVariableWithLinearScanAndLazyEncoding() this function
+// just return the last solver status. In particular if it is INFEASIBLE but
+// feasible_solution_observer() was called, it means we are at OPTIMAL.
+class CoreBasedOptimizer {
+ public:
+  CoreBasedOptimizer(IntegerVariable objective_var,
+                     const std::vector<IntegerVariable>& variables,
+                     const std::vector<IntegerValue>& coefficients,
+                     std::function<void()> feasible_solution_observer,
+                     Model* model);
+
+  // TODO(user): Change the algo slighlty to allow resuming from the last
+  // aborted position. Currently, the search is "resumable", but it will restart
+  // some of the work already done, so it might just never find anything.
+  SatSolver::Status Optimize();
+
+ private:
+  CoreBasedOptimizer(const CoreBasedOptimizer&) = delete;
+  CoreBasedOptimizer& operator=(const CoreBasedOptimizer&) = delete;
+
+  struct ObjectiveTerm {
+    IntegerVariable var;
+    IntegerValue weight;
+    int depth;  // Only for logging/debugging.
+    IntegerValue old_var_lb;
+
+    // An upper bound on the optimal solution if we were to optimize only this
+    // term. This is used by the cover optimization code.
+    IntegerValue cover_ub;
+  };
+
+  // This will be called each time a feasible solution is found. Returns false
+  // if a conflict was detected while trying to constrain the objective to a
+  // smaller value.
+  bool ProcessSolution();
+
+  // Use the gap an implied bounds to propagated the bounds of the objective
+  // variables and of its terms.
+  bool PropagateObjectiveBounds();
+
+  // Heuristic that aim to find the "real" lower bound of the objective on each
+  // core by using a linear scan optimization approach.
+  bool CoverOptimization();
+
+  // Computes the next stratification threshold.
+  // Sets it to zero if all the assumptions where already considered.
+  void ComputeNextStratificationThreshold();
+
+  SatParameters* parameters_;
+  SatSolver* sat_solver_;
+  TimeLimit* time_limit_;
+  IntegerTrail* integer_trail_;
+  IntegerEncoder* integer_encoder_;
+  Model* model_;  // TODO(user): remove this one.
+
+  IntegerVariable objective_var_;
+  std::vector<ObjectiveTerm> terms_;
+  IntegerValue stratification_threshold_;
+  std::function<void()> feasible_solution_observer_;
+
+  // This is used to not add the objective equation more than once if we
+  // solve in "chunk".
+  bool already_switched_to_linear_scan_ = false;
+
+  // Set to true when we need to abort early.
+  //
+  // TODO(user): This is only used for the stop after first solution parameter
+  // which should likely be handled differently by simply using the normal way
+  // to stop a solver from the feasible solution callback.
+  bool stop_ = false;
+};
 
 // Generalization of the max-HS algorithm (HS stands for Hitting Set). This is
 // similar to MinimizeWithCoreAndLazyEncoding() but it uses a hybrid approach
@@ -180,12 +224,8 @@ SatSolver::Status MinimizeWithCoreAndLazyEncoding(
 // TODO(user): This function brings dependency to the SCIP MIP solver which is
 // quite big, maybe we should find a way not to do that.
 SatSolver::Status MinimizeWithHittingSetAndLazyEncoding(
-    bool log_info, IntegerVariable objective_var,
-    std::vector<IntegerVariable> variables,
-    std::vector<IntegerValue> coefficients,
-    const std::function<LiteralIndex()>& next_decision,
-    const std::function<void(const Model&)>& feasible_solution_observer,
-    Model* model);
+    const ObjectiveDefinition& objective_definition,
+    const std::function<void()>& feasible_solution_observer, Model* model);
 
 }  // namespace sat
 }  // namespace operations_research

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,8 +15,7 @@
 #define OR_TOOLS_UTIL_FUNCTIONS_SWIG_HELPERS_H_
 
 // This file contains class definitions for the wrapping of C++ std::functions
-// in Java and C#. It is #included by java/functions.i and
-// csharp/functions.i.
+// in Java. It is #included by java/functions.i.
 
 #include <functional>
 #include <string>
@@ -35,6 +34,12 @@ class LongLongToLong {
  public:
   virtual ~LongLongToLong() {}
   virtual int64 Run(int64, int64) = 0;
+};
+
+class IntToLong {
+ public:
+  virtual ~IntToLong() {}
+  virtual int64 Run(int) = 0;
 };
 
 class IntIntToLong {

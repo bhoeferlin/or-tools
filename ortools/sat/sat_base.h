@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,14 +22,13 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "ortools/base/int_type.h"
 #include "ortools/base/int_type_indexed_vector.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
-#include "ortools/base/port.h"
-#include "ortools/base/span.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/sat/model.h"
 #include "ortools/util/bitset.h"
 
@@ -65,7 +64,7 @@ const LiteralIndex kFalseLiteralIndex(-3);
 class Literal {
  public:
   // Not explicit for tests so we can write:
-  // std::vector<literal> literal = {+1, -3, +4, -9};
+  // vector<literal> literal = {+1, -3, +4, -9};
   Literal(int signed_value)  // NOLINT
       : index_(signed_value > 0 ? ((signed_value - 1) << 1)
                                 : ((-signed_value - 1) << 1) ^ 1) {
@@ -91,7 +90,9 @@ class Literal {
 
   Literal Negated() const { return Literal(NegatedIndex()); }
 
-  std::string DebugString() const { return StringPrintf("%+d", SignedValue()); }
+  std::string DebugString() const {
+    return absl::StrFormat("%+d", SignedValue());
+  }
   bool operator==(Literal other) const { return index_ == other.index_; }
   bool operator!=(Literal other) const { return index_ != other.index_; }
 
@@ -105,6 +106,14 @@ class Literal {
 
 inline std::ostream& operator<<(std::ostream& os, Literal literal) {
   os << literal.DebugString();
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os,
+                                absl::Span<const Literal> literals) {
+  for (const Literal literal : literals) {
+    os << literal.DebugString() << ",";
+  }
   return os;
 }
 
@@ -184,11 +193,10 @@ struct AssignmentInfo {
   // LBD computation, the literal of the conflict are already ordered by level,
   // so we could do it fairly efficiently.
   //
-  // TODO(user): We currently don't support more than 134M decision levels. That
+  // TODO(user): We currently don't support more than 2^28 decision levels. That
   // should be enough for most practical problem, but we should fail properly if
   // this limit is reached.
-  bool last_polarity : 1;
-  uint32 level : 27;
+  uint32 level : 28;
 
   // The type of assignment (see AssignmentType below).
   //
@@ -200,23 +208,23 @@ struct AssignmentInfo {
   int32 trail_index;
 
   std::string DebugString() const {
-    return StringPrintf("level:%d type:%d trail_index:%d", level, type,
-                        trail_index);
+    return absl::StrFormat("level:%d type:%d trail_index:%d", level, type,
+                           trail_index);
   }
 };
-COMPILE_ASSERT(sizeof(AssignmentInfo) == 8,
-               ERROR_AssignmentInfo_is_not_well_compacted);
+static_assert(sizeof(AssignmentInfo) == 8,
+              "ERROR_AssignmentInfo_is_not_well_compacted");
 
 // Each literal on the trail will have an associated propagation "type" which is
 // either one of these special types or the id of a propagator.
 struct AssignmentType {
-  static const int kCachedReason = 0;
-  static const int kUnitReason = 1;
-  static const int kSearchDecision = 2;
-  static const int kSameReasonAs = 3;
+  static constexpr int kCachedReason = 0;
+  static constexpr int kUnitReason = 1;
+  static constexpr int kSearchDecision = 2;
+  static constexpr int kSameReasonAs = 3;
 
   // Propagator ids starts from there and are created dynamically.
-  static const int kFirstFreePropagationId = 4;
+  static constexpr int kFirstFreePropagationId = 4;
 };
 
 // The solver trail stores the assignment made by the solver in order.
@@ -242,7 +250,6 @@ class Trail {
   void Enqueue(Literal true_literal, int propagator_id) {
     DCHECK(!assignment_.VariableIsAssigned(true_literal.Variable()));
     trail_[current_info_.trail_index] = true_literal;
-    current_info_.last_polarity = true_literal.IsPositive();
     current_info_.type = propagator_id;
     info_[true_literal.Variable()] = current_info_;
     assignment_.AssignFromTrueLiteral(true_literal);
@@ -274,7 +281,7 @@ class Trail {
   // already assigned to false, then MutableConflict() will be set appropriately
   // and this will return false otherwise this will enqueue the literal and
   // returns true.
-  bool EnqueueWithStoredReason(Literal true_literal) MUST_USE_RESULT {
+  ABSL_MUST_USE_RESULT bool EnqueueWithStoredReason(Literal true_literal) {
     if (assignment_.LiteralIsTrue(true_literal)) return true;
     if (assignment_.LiteralIsFalse(true_literal)) {
       *MutableConflict() = reasons_repository_[Index()];
@@ -295,7 +302,7 @@ class Trail {
   // Note that this shouldn't be called on a variable at level zero, because we
   // don't cleanup the reason data for these variables but the underlying
   // clauses may have been deleted.
-  absl::Span<Literal> Reason(BooleanVariable var) const;
+  absl::Span<const Literal> Reason(BooleanVariable var) const;
 
   // Returns the "type" of an assignment (see AssignmentType). Note that this
   // function never returns kSameReasonAs or kCachedReason, it instead returns
@@ -321,6 +328,14 @@ class Trail {
   // Shortcut for GetEmptyVectorToStoreReason(Index()).
   std::vector<Literal>* GetEmptyVectorToStoreReason() const {
     return GetEmptyVectorToStoreReason(Index());
+  }
+
+  // Explicitly overwrite the reason so that the given propagator will be
+  // asked for it. This is currently only used by the BinaryImplicationGraph.
+  void ChangeReason(int trail_index, int propagator_id) {
+    const BooleanVariable var = trail_[trail_index].Variable();
+    info_[var].type = propagator_id;
+    old_type_[var] = propagator_id;
   }
 
   // Reverts the trail and underlying assignment to the given target trail
@@ -349,7 +364,7 @@ class Trail {
   }
 
   // Returns the last conflict.
-  absl::Span<Literal> FailingClause() const { return conflict_; }
+  absl::Span<const Literal> FailingClause() const { return conflict_; }
 
   // Specific SatClause interface so we can update the conflict clause activity.
   // Note that MutableConflict() automatically sets this to nullptr, so we can
@@ -361,7 +376,7 @@ class Trail {
   int NumVariables() const { return trail_.size(); }
   int64 NumberOfEnqueues() const { return num_untrailed_enqueues_ + Index(); }
   int Index() const { return current_info_.trail_index; }
-  const Literal operator[](int index) const { return trail_[index]; }
+  const Literal& operator[](int index) const { return trail_[index]; }
   const VariablesAssignment& Assignment() const { return assignment_; }
   const AssignmentInfo& Info(BooleanVariable var) const {
     DCHECK_GE(var, 0);
@@ -377,10 +392,6 @@ class Trail {
       result += trail_[i].DebugString();
     }
     return result;
-  }
-
-  void SetLastPolarity(BooleanVariable var, bool polarity) {
-    info_[var].last_polarity = polarity;
   }
 
  private:
@@ -420,7 +431,7 @@ class Trail {
   // variables, the memory address of the vectors (kept in reasons_) are still
   // valid.
   mutable std::deque<std::vector<Literal>> reasons_repository_;
-  mutable gtl::ITIVector<BooleanVariable, absl::Span<Literal>> reasons_;
+  mutable gtl::ITIVector<BooleanVariable, absl::Span<const Literal>> reasons_;
   mutable gtl::ITIVector<BooleanVariable, int> old_type_;
 
   // This is used by RegisterPropagator() and Reason().
@@ -474,8 +485,8 @@ class SatPropagator {
   // The returned Span has to be valid until the literal is untrailed. A client
   // can use trail_.GetEmptyVectorToStoreReason() if it doesn't have a memory
   // location that already contains the reason.
-  virtual absl::Span<Literal> Reason(const Trail& trail,
-                                     int trail_index) const {
+  virtual absl::Span<const Literal> Reason(const Trail& trail,
+                                           int trail_index) const {
     LOG(FATAL) << "Not implemented.";
     return {};
   }
@@ -566,7 +577,7 @@ inline int Trail::AssignmentType(BooleanVariable var) const {
   return type != AssignmentType::kCachedReason ? type : old_type_[var];
 }
 
-inline absl::Span<Literal> Trail::Reason(BooleanVariable var) const {
+inline absl::Span<const Literal> Trail::Reason(BooleanVariable var) const {
   // Special case for AssignmentType::kSameReasonAs to avoid a recursive call.
   var = ReferenceVarWithSameReason(var);
 

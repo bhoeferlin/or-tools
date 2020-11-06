@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -25,8 +25,15 @@
 // API to be exposed here.
 //
 // TODO(user): test all the APIs that are currently marked as 'untested'.
+//swiglint: disable full-signature
+
+%include "stdint.i"
 
 %include "ortools/base/base.i"
+
+%include "ortools/util/python/functions.i"
+
+%import "ortools/util/python/vector.i"
 
 %import "ortools/graph/ebert_graph.h"
 
@@ -41,6 +48,9 @@
 #include "ortools/graph/min_cost_flow.h"
 #include "ortools/graph/shortestpaths.h"
 %}
+
+typedef int64_t int64;
+typedef uint64_t uint64;
 
 // ############ max_flow.h ############
 
@@ -124,6 +134,7 @@
 // class, and we rename it "LinearSumAssignment".
 %rename(LinearSumAssignment) operations_research::SimpleLinearSumAssignment;
 %unignore operations_research::SimpleLinearSumAssignment::SimpleLinearSumAssignment;
+%unignore operations_research::SimpleLinearSumAssignment::~SimpleLinearSumAssignment;
 %unignore operations_research::SimpleLinearSumAssignment::AddArcWithCost;
 %unignore operations_research::SimpleLinearSumAssignment::NumNodes;
 %unignore operations_research::SimpleLinearSumAssignment::NumArcs;  // untested
@@ -141,7 +152,13 @@
 
 %include "ortools/graph/assignment.h"
 
+%unignoreall
 
+// ############ shortestpaths.h ############
+
+%ignoreall
+
+%unignore operations_research;
 %unignore operations_research::DijkstraShortestPath;
 %unignore operations_research::BellmanFordShortestPath;
 %unignore operations_research::AStarShortestPath;

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -10,37 +10,23 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+package com.google.ortools.java;
 
+import com.google.ortools.Loader;
 import com.google.ortools.linearsolver.MPConstraint;
 import com.google.ortools.linearsolver.MPObjective;
 import com.google.ortools.linearsolver.MPSolver;
 import com.google.ortools.linearsolver.MPVariable;
 
-/**
- * Integer programming example that shows how to use the API.
- *
- */
-
+/** Integer programming example that shows how to use the API. */
 public class IntegerProgramming {
-  static { System.loadLibrary("jniortools"); }
-
-  private static MPSolver createSolver (String solverType) {
-    try {
-      return new MPSolver("IntegerProgrammingExample",
-                          MPSolver.OptimizationProblemType.valueOf(solverType));
-    } catch (java.lang.IllegalArgumentException e) {
-	    System.err.println("Bad solver type: " + e);
-      return null;
-    }
-  }
-
   private static void runIntegerProgrammingExample(String solverType) {
-    MPSolver solver = createSolver(solverType);
+    MPSolver solver = MPSolver.createSolver(solverType);
     if (solver == null) {
       System.out.println("Could not create solver " + solverType);
       return;
     }
-    double infinity = MPSolver.infinity();
+    double infinity = java.lang.Double.POSITIVE_INFINITY;
     // x1 and x2 are integer non-negative variables.
     MPVariable x1 = solver.makeIntVar(0.0, infinity, "x1");
     MPVariable x2 = solver.makeIntVar(0.0, infinity, "x2");
@@ -65,9 +51,9 @@ public class IntegerProgramming {
 
     // Verify that the solution satisfies all constraints (when using solvers
     // others than GLOP_LINEAR_PROGRAMMING, this is highly recommended!).
-    if (!solver.verifySolution(/*tolerance=*/1e-7, /*logErrors=*/true)) {
+    if (!solver.verifySolution(/*tolerance=*/1e-7, /* log_errors= */ true)) {
       System.err.println("The solution returned by the solver violated the"
-                         + " problem constraints by at least 1e-7");
+          + " problem constraints by at least 1e-7");
       return;
     }
 
@@ -84,13 +70,13 @@ public class IntegerProgramming {
     System.out.println("Problem solved in " + solver.nodes() + " branch-and-bound nodes");
   }
 
-
   public static void main(String[] args) throws Exception {
+    Loader.loadNativeLibraries();
     System.out.println("---- Integer programming example with SCIP (recommended) ----");
-    runIntegerProgrammingExample("SCIP_MIXED_INTEGER_PROGRAMMING");
+    runIntegerProgrammingExample("SCIP");
     System.out.println("---- Integer programming example with CBC ----");
-    runIntegerProgrammingExample("CBC_MIXED_INTEGER_PROGRAMMING");
-    System.out.println("---- Integer programming example with GLPK ----");
-    runIntegerProgrammingExample("GLPK_MIXED_INTEGER_PROGRAMMING");
+    runIntegerProgrammingExample("CBC");
+    System.out.println("---- Integer programming example with CP-SAT ----");
+    runIntegerProgrammingExample("SAT");
   }
 }

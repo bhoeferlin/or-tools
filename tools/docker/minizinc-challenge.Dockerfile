@@ -1,10 +1,10 @@
-FROM minizinc/mznc2018:1.0
+FROM minizinc/mznc2020
 
 ENV SRC_GIT_BRANCH master
 
 RUN apt-get update
 
-RUN apt-get -y install git wget autoconf libtool zlib1g-dev gawk g++ curl cmake subversion make mono-complete swig lsb-release python-dev default-jdk twine python-setuptools python-six python3-setuptools python3-dev python-wheel python3-wheel
+RUN apt-get -y install pkg-config git wget autoconf libtool zlib1g-dev gawk g++ curl cmake make lsb-release python-dev gfortran gcc-8
 
 ENV TZ=America/Los_Angeles
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -15,6 +15,24 @@ RUN git clone -b "$SRC_GIT_BRANCH" --single-branch https://github.com/google/or-
 
 WORKDIR /root/or-tools
 
-RUN make third_party
+RUN make Makefile.local
 
-RUN make cc fz
+RUN echo USE_SCIP=OFF >> Makefile.local
+
+RUN echo USE_COINOR=OFF >> Makefile.local
+
+RUN mkdir ortools/gen
+
+RUN mkdir ortools/gen/ortools
+
+RUN mkdir ortools/gen/ortools/linear_solver
+
+RUN touch ortools/gen/ortools/linear_solver/lpi_glop.cc
+
+RUN make -j 4 third_party
+
+RUN make -j 2 cc fz
+
+RUN ln -s /root/or-tools/bin/fz /entry_data/fzn-exec
+
+RUN cp /root/or-tools/ortools/flatzinc/mznlib/*mzn /entry_data/mzn-lib

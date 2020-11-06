@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,7 +12,6 @@
 // limitations under the License.
 
 #include <atomic>
-#include <fstream>
 #include <string>
 #include <vector>
 
@@ -22,13 +21,9 @@
 #include "ortools/base/hash.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/port.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/bop/bop_parameters.pb.h"
 #include "ortools/bop/integral_solver.h"
 #include "ortools/linear_solver/linear_solver.h"
-
-#if defined(USE_BOP)
 
 namespace operations_research {
 namespace {
@@ -161,7 +156,8 @@ MPSolver::ResultStatus BopInterface::Solve(const MPSolverParameters& param) {
                    << "Filling the missing positions with zeros...";
     }
     initial_solution.assign(glop::ColIndex(num_vars), glop::Fractional(0.0));
-    for (const std::pair<MPVariable*, double>& p : solver_->solution_hint_) {
+    for (const std::pair<const MPVariable*, double>& p :
+         solver_->solution_hint_) {
       initial_solution[glop::ColIndex(p.first->index())] =
           glop::Fractional(p.second);
     }
@@ -331,7 +327,7 @@ void BopInterface::ExtractNewConstraints() {
     DCHECK_EQ(new_row, row);
     linear_program_.SetConstraintBounds(row, lb, ub);
 
-    for (CoeffEntry entry : ct->coefficients_) {
+    for (const auto& entry : ct->coefficients_) {
       const int var_index = entry.first->index();
       DCHECK(variable_is_extracted(var_index));
       const glop::ColIndex col(var_index);
@@ -344,7 +340,7 @@ void BopInterface::ExtractNewConstraints() {
 // TODO(user): remove duplication with GlopInterface.
 void BopInterface::ExtractObjective() {
   linear_program_.SetObjectiveOffset(solver_->Objective().offset());
-  for (CoeffEntry entry : solver_->objective_->coefficients_) {
+  for (const auto& entry : solver_->objective_->coefficients_) {
     const int var_index = entry.first->index();
     const glop::ColIndex col(var_index);
     const double coeff = entry.second;
@@ -398,4 +394,3 @@ MPSolverInterface* BuildBopInterface(MPSolver* const solver) {
 }
 
 }  // namespace operations_research
-#endif  //  #if defined(USE_BOP)

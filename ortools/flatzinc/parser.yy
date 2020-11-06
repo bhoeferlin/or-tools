@@ -1,5 +1,5 @@
 // Renames all yy to orfz_ in public functions.
-%name-prefix "orfz_"
+%define api.prefix {orfz_}
 
 // List the parameter of the lexer.
 %lex-param {void* scanner}
@@ -13,15 +13,14 @@
 %parse-param {void* scanner}
 
 // Specify a reentrant parser. (or-tools needs the api.pure declaration)
-// TODO(lperron): Implement some MOE like modification.
-//%define api.pure full
-%pure-parser
+%define api.pure full
 
 // Code to be exported in parser.tab.hh
 %code requires {
 #if !defined(OR_TOOLS_FLATZINC_FLATZINC_TAB_HH_)
 #define OR_TOOLS_FLATZINC_FLATZINC_TAB_HH_
-#include "ortools/base/strutil.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 #include "ortools/flatzinc/parser_util.h"
 
 // Tells flex to use the LexerInfo class to communicate with the bison parser.
@@ -35,7 +34,8 @@ typedef operations_research::fz::LexerInfo YYSTYPE;
 
 // Code in the implementation file.
 %code {
-#include "ortools/base/stringpiece_utils.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 #include "ortools/flatzinc/parser_util.cc"
 
 using operations_research::fz::Annotation;
@@ -52,12 +52,12 @@ using operations_research::fz::VariableRefOrValue;
 using operations_research::fz::VariableRefOrValueArray;
 }  // code
 
-%error-verbose
+%define parse.error verbose
 
 // Type declarations.
 
 // The lexer, defined in the ./flazinc.lex file, does the low-level parsing
-// of std::string tokens and converts each of them them into a YACC token. A YACC
+// of string tokens and converts each of them them into a YACC token. A YACC
 // token has a type (VAR, IVALUE, const_literal) and optionally a value,
 // stored in a token-specific field of a LexerInfo instance dedicated to this
 // token. Eg. "26" is converted into an YACC token of type IVALUE, with value
@@ -70,7 +70,7 @@ using operations_research::fz::VariableRefOrValueArray;
 //
 // Here are the terminal, valueless tokens. See the .lex file to see where
 // they come from.
-%token ARRAY BOOL CONSTRAINT FLOAT INT MAXIMIZE MINIMIZE OF
+%token ARRAY TOKEN_BOOL CONSTRAINT TOKEN_FLOAT TOKEN_INT MAXIMIZE MINIMIZE OF
 %token PREDICATE SATISFY SET SOLVE VAR DOTDOT COLONCOLON
 // Here are the terminal, value-carrying tokens, preceded by the name of the
 // LexerInfo field in which their value is stored (eg. the value of a IVALUE
@@ -134,8 +134,8 @@ predicate_array_argument:
 | IVALUE DOTDOT IVALUE
 
 predicate_ints:
-  INT ',' predicate_ints
-| INT
+  TOKEN_INT ',' predicate_ints
+| TOKEN_INT
 
 //---------------------------------------------------------------------------
 // Parsing variables or constants (named objects).
@@ -253,7 +253,7 @@ variable_or_constant_declaration:
   std::vector<Annotation>* const annotations = $5;
   const VariableRefOrValue& assignment = $6;
   const bool introduced = ContainsId(annotations, "var_is_introduced") ||
-      strings::StartsWith(identifier, "X_INTRODUCED");
+      absl::StartsWith(identifier, "X_INTRODUCED");
   IntegerVariable* var = nullptr;
   if (!assignment.defined) {
     var = model->AddVariable(identifier, domain, introduced);
@@ -263,7 +263,7 @@ variable_or_constant_declaration:
         identifier, Domain::IntegerValue(assignment.value), introduced);
   } else {  // a variable.
     var = assignment.variable;
-    var->Merge(identifier, domain, nullptr, introduced);
+    var->Merge(identifier, domain, introduced);
   }
 
   // We also register the variable in the parser's context, and add some
@@ -290,12 +290,12 @@ variable_or_constant_declaration:
   CHECK(assignments == nullptr || assignments->variables.size() == num_vars);
   CHECK(assignments == nullptr || assignments->values.size() == num_vars);
   const bool introduced = ContainsId(annotations, "var_is_introduced") ||
-      strings::StartsWith(identifier, "X_INTRODUCED");
+      absl::StartsWith(identifier, "X_INTRODUCED");
 
   std::vector<IntegerVariable*> vars(num_vars, nullptr);
 
   for (int i = 0; i < num_vars; ++i) {
-    const std::string var_name = StringPrintf("%s[%d]", identifier.c_str(), i + 1);
+    const std::string var_name = absl::StrFormat("%s[%d]", identifier, i + 1);
     if (assignments == nullptr) {
       vars[i] = model->AddVariable(var_name, domain, introduced);
     } else if (assignments->variables[i] == nullptr) {
@@ -308,7 +308,7 @@ variable_or_constant_declaration:
       IntegerVariable* const var = assignments->variables[i];
       CHECK(var != nullptr);
       vars[i] = var;
-      vars[i]->Merge(var_name, domain, nullptr, introduced);
+      vars[i]->Merge(var_name, domain, introduced);
     }
   }
   delete assignments;
@@ -397,8 +397,8 @@ var_or_value:
 }
 
 int_domain:
-  BOOL { $$ = Domain::Boolean(); }
-| INT { $$ = Domain::AllInt64(); }
+  TOKEN_BOOL { $$ = Domain::Boolean(); }
+| TOKEN_INT { $$ = Domain::AllInt64(); }
 | IVALUE DOTDOT IVALUE { $$ = Domain::Interval($1, $3); }
 | '{' integers '}' {
   CHECK($2 != nullptr);
@@ -407,8 +407,8 @@ int_domain:
 }
 
 set_domain:
-  SET OF BOOL { $$ = Domain::SetOfBoolean(); }
-| SET OF INT { $$ = Domain::SetOfAllInt64(); }
+  SET OF TOKEN_BOOL { $$ = Domain::SetOfBoolean(); }
+| SET OF TOKEN_INT { $$ = Domain::SetOfAllInt64(); }
 | SET OF IVALUE DOTDOT IVALUE { $$ = Domain::SetOfInterval($3, $5); }
 | SET OF '{' integers '}' {
   CHECK($4 != nullptr);
@@ -417,7 +417,7 @@ set_domain:
 }
 
 float_domain:
-  FLOAT { $$ = Domain::AllInt64(); }  // TODO(lperron): implement floats.
+  TOKEN_FLOAT { $$ = Domain::AllInt64(); }  // TODO(lperron): implement floats.
 | DVALUE DOTDOT DVALUE {
   const int64 lb = ConvertAsIntegerOrDie($1);
   const int64 ub = ConvertAsIntegerOrDie($3);
@@ -491,22 +491,7 @@ constraint :
   const std::vector<Argument>& arguments = *$4;
   std::vector<Annotation>* const annotations = $6;
 
-  // Does the constraint have a defines_var annotation?
-  IntegerVariable* defines_var = nullptr;
-  if (annotations != nullptr) {
-    for (int i = 0; i < annotations->size(); ++i) {
-      const Annotation& ann = (*annotations)[i];
-      if (ann.IsFunctionCallWithIdentifier("defines_var")) {
-        CHECK_EQ(1, ann.annotations.size());
-        CHECK_EQ(Annotation::INT_VAR_REF, ann.annotations.back().type);
-        defines_var = ann.annotations.back().variables[0];
-        break;
-      }
-    }
-  }
-
-  model->AddConstraint(identifier, arguments,
-                       ContainsId(annotations, "domain"), defines_var);
+  model->AddConstraint(identifier, arguments, ContainsId(annotations, "domain"));
   delete annotations;
   delete $4;
 }

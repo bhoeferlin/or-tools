@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,11 +17,12 @@
 #include <vector>
 
 #include "ortools/base/integral_types.h"
+#include "ortools/graph/shortestpaths.h"
 
 namespace operations_research {
 class BellmanFord {
  public:
-  static const int64 kInfinity = kint64max / 2;
+  static constexpr int64 kInfinity = kint64max / 2;
 
   BellmanFord(int node_count, int start_node,
               std::function<int64(int, int)> graph, int64 disconnected_distance)

@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,13 +17,14 @@
 #include <cstdlib>
 #include <limits>
 #include <numeric>
-#include <unordered_map>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "ortools/base/commandlineflags.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/logging.h"
-#include "ortools/base/stringprintf.h"
 #if !defined(__PORTABLE_PLATFORM__)
 #include "ortools/graph/io.h"
 #endif  // __PORTABLE_PLATFORM__
@@ -47,10 +48,10 @@ namespace sat {
 using util::RemapGraph;
 
 void ExtractAssignment(const LinearBooleanProblem& problem,
-                       const SatSolver& solver, std::vector<bool>* assignemnt) {
-  assignemnt->clear();
+                       const SatSolver& solver, std::vector<bool>* assignment) {
+  assignment->clear();
   for (int i = 0; i < problem.num_variables(); ++i) {
-    assignemnt->push_back(
+    assignment->push_back(
         solver.Assignment().LiteralIsTrue(Literal(BooleanVariable(i), true)));
   }
 }
@@ -60,7 +61,7 @@ namespace {
 // Used by BooleanProblemIsValid() to test that there is no duplicate literals,
 // that they are all within range and that there is no zero coefficient.
 //
-// A non-empty std::string indicates an error.
+// A non-empty string indicates an error.
 template <typename LinearTerms>
 std::string ValidateLinearTerms(const LinearTerms& terms,
                                 std::vector<bool>* variable_seen) {
@@ -71,24 +72,24 @@ std::string ValidateLinearTerms(const LinearTerms& terms,
   for (int i = 0; i < terms.literals_size(); ++i) {
     if (terms.literals(i) == 0) {
       if (++num_errs <= max_num_errs) {
-        err_str += StringPrintf("Zero literal at position %d\n", i);
+        err_str += absl::StrFormat("Zero literal at position %d\n", i);
       }
     }
     if (terms.coefficients(i) == 0) {
       if (++num_errs <= max_num_errs) {
-        err_str += StringPrintf("Literal %d has a zero coefficient\n",
-                                terms.literals(i));
+        err_str += absl::StrFormat("Literal %d has a zero coefficient\n",
+                                   terms.literals(i));
       }
     }
     const int var = Literal(terms.literals(i)).Variable().value();
     if (var >= variable_seen->size()) {
       if (++num_errs <= max_num_errs) {
-        err_str += StringPrintf("Out of bound variable %d\n", var);
+        err_str += absl::StrFormat("Out of bound variable %d\n", var);
       }
     }
     if ((*variable_seen)[var]) {
       if (++num_errs <= max_num_errs) {
-        err_str += StringPrintf("Duplicated variable %d\n", var);
+        err_str += absl::StrFormat("Duplicated variable %d\n", var);
       }
     }
     (*variable_seen)[var] = true;
@@ -100,11 +101,12 @@ std::string ValidateLinearTerms(const LinearTerms& terms,
   }
   if (num_errs) {
     if (num_errs <= max_num_errs) {
-      err_str = StringPrintf("%d validation errors:\n", num_errs) + err_str;
+      err_str = absl::StrFormat("%d validation errors:\n", num_errs) + err_str;
     } else {
-      err_str = StringPrintf("%d validation errors; here are the first %d:\n",
-                             num_errs, max_num_errs) +
-                err_str;
+      err_str =
+          absl::StrFormat("%d validation errors; here are the first %d:\n",
+                          num_errs, max_num_errs) +
+          err_str;
     }
   }
   return err_str;
@@ -126,23 +128,24 @@ std::vector<LiteralWithCoeff> ConvertLinearExpression(
 
 }  // namespace
 
-util::Status ValidateBooleanProblem(const LinearBooleanProblem& problem) {
+absl::Status ValidateBooleanProblem(const LinearBooleanProblem& problem) {
   std::vector<bool> variable_seen(problem.num_variables(), false);
   for (int i = 0; i < problem.constraints_size(); ++i) {
     const LinearBooleanConstraint& constraint = problem.constraints(i);
     const std::string error = ValidateLinearTerms(constraint, &variable_seen);
     if (!error.empty()) {
-      return util::Status(util::error::INVALID_ARGUMENT,
-                          StringPrintf("Invalid constraint %i: ", i) + error);
+      return absl::Status(
+          absl::StatusCode::kInvalidArgument,
+          absl::StrFormat("Invalid constraint %i: ", i) + error);
     }
   }
   const std::string error =
       ValidateLinearTerms(problem.objective(), &variable_seen);
   if (!error.empty()) {
-    return util::Status(util::error::INVALID_ARGUMENT,
-                        StringPrintf("Invalid objective: ") + error);
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        absl::StrFormat("Invalid objective: ") + error);
   }
-  return util::Status::OK;
+  return ::absl::OkStatus();
 }
 
 CpModelProto BooleanProblemToCpModelproto(const LinearBooleanProblem& problem) {
@@ -219,7 +222,7 @@ bool LoadBooleanProblem(const LinearBooleanProblem& problem,
   // constraints with duplicate variables, so we just output a warning if the
   // problem is not "valid". Make this a strong check once we have some
   // preprocessing step to remove duplicates variable in the constraints.
-  const util::Status status = ValidateBooleanProblem(problem);
+  const absl::Status status = ValidateBooleanProblem(problem);
   if (!status.ok()) {
     LOG(WARNING) << "The given problem is invalid!";
   }
@@ -255,13 +258,13 @@ bool LoadBooleanProblem(const LinearBooleanProblem& problem,
 
 bool LoadAndConsumeBooleanProblem(LinearBooleanProblem* problem,
                                   SatSolver* solver) {
-  const util::Status status = ValidateBooleanProblem(*problem);
+  const absl::Status status = ValidateBooleanProblem(*problem);
   if (!status.ok()) {
-    LOG(WARNING) << "The given problem is invalid! " << status.error_message();
+    LOG(WARNING) << "The given problem is invalid! " << status.message();
   }
   if (solver->parameters().log_search_progress()) {
 #if !defined(__PORTABLE_PLATFORM__)
-    LOG(INFO) << "LinearBooleanProblem memory: " << problem->SpaceUsed();
+    LOG(INFO) << "LinearBooleanProblem memory: " << problem->SpaceUsedLong();
 #endif
     LOG(INFO) << "Loading problem '" << problem->name() << "', "
               << problem->num_variables() << " variables, "
@@ -397,7 +400,7 @@ std::string LinearBooleanProblemToCnfString(
   const int first_slack_variable = problem.original_num_variables();
 
   // This will contains the objective.
-  std::unordered_map<int, int64> literal_to_weight;
+  absl::flat_hash_map<int, int64> literal_to_weight;
   std::vector<std::pair<int, int64>> non_slack_objective;
 
   // This will be the weight of the "hard" clauses in the wcnf format. It must
@@ -427,13 +430,13 @@ std::string LinearBooleanProblemToCnfString(
       hard_weight += weight;
       ++i;
     }
-    output += absl::StrFormat("p wcnf %d %d %lld\n", first_slack_variable,
+    output += absl::StrFormat("p wcnf %d %d %d\n", first_slack_variable,
                               static_cast<int>(problem.constraints_size() +
                                                non_slack_objective.size()),
                               hard_weight);
   } else {
-    output += StringPrintf("p cnf %d %d\n", problem.num_variables(),
-                           problem.constraints_size());
+    output += absl::StrFormat("p cnf %d %d\n", problem.num_variables(),
+                              problem.constraints_size());
   }
 
   std::string constraint_output;
@@ -451,7 +454,7 @@ std::string LinearBooleanProblemToCnfString(
       }
     }
     if (is_wcnf) {
-      output += absl::StrFormat("%lld ", weight);
+      output += absl::StrFormat("%d ", weight);
     }
     output += constraint_output + " 0\n";
   }
@@ -462,8 +465,7 @@ std::string LinearBooleanProblemToCnfString(
       // Since it is falsifying this clause that cost "weigtht", we need to take
       // its negation.
       const Literal literal(-p.first);
-      output += absl::StrFormat("%lld %s 0\n", p.second,
-                                literal.DebugString().c_str());
+      output += absl::StrFormat("%d %s 0\n", p.second, literal.DebugString());
     }
   }
 
@@ -508,7 +510,7 @@ class IdGenerator {
   }
 
  private:
-  std::unordered_map<std::pair<int, int64>, int> id_map_;
+  absl::flat_hash_map<std::pair<int, int64>, int> id_map_;
 };
 }  // namespace.
 
@@ -689,7 +691,7 @@ void FindLinearBooleanProblemSymmetries(
       new_node_index[node] = next_index_by_class[equivalence_classes[node]]++;
     }
     std::unique_ptr<Graph> remapped_graph = RemapGraph(*graph, new_node_index);
-    const util::Status status = util::WriteGraphToFile(
+    const absl::Status status = util::WriteGraphToFile(
         *remapped_graph, FLAGS_debug_dump_symmetry_graph_to_file,
         /*directed=*/false, class_size);
     if (!status.ok()) {

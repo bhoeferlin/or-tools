@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -43,7 +43,7 @@ class VariablesInfo {
   // to call this if the status or the bound of a variable didn't change.
   void Update(ColIndex col, VariableStatus status);
 
-  // Slighlty optimized version of Update() above for the two separate cases.
+  // Slightly optimized version of Update() above for the two separate cases.
   void UpdateToBasicStatus(ColIndex col);
   void UpdateToNonBasicStatus(ColIndex col, VariableStatus status);
 
@@ -66,10 +66,10 @@ class VariablesInfo {
 
   // Changes whether or not a non-basic boxed variable is 'relevant' and will be
   // returned as such by GetIsRelevantBitRow().
-  void MakeBoxedVariableRelevant(bool are_boxed_variables_relevant);
+  void MakeBoxedVariableRelevant(bool value);
 
-  // This is used in UpdateRow to decide wheter to compute it using the row-wise
-  // or column-wise representation.
+  // This is used in UpdateRow to decide whether to compute it using the
+  // row-wise or column-wise representation.
   EntryIndex GetNumEntriesInRelevantColumns() const;
 
   // Returns the distance between the upper and lower bound of the given column.

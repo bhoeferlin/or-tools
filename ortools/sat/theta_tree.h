@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -62,7 +62,7 @@ namespace sat {
 //   initial_envelope(event) + sum_energy_min(event).
 //
 // We also maintain envelope_opt with is the maximum envelope a node could take
-// if at most one of the event where at its maximum energy.
+// if at most one of the events were at its maximum energy.
 // _ energy_delta(leaf) = energy_max(leaf) - energy_min(leaf)
 // _ max_energy_delta(node) = max_{leaf \in leaves(node)} energy_delta(leaf)
 // _ envelope_opt(node) =
@@ -89,13 +89,13 @@ namespace sat {
 // There is hope to unify the variants of these algorithms by abstracting the
 // tasks away to reason only on events.
 
-// The minimal value of an envelope, for instance the envelope the empty set.
+// The minimal value of an envelope, for instance the envelope of the empty set.
 template <typename IntegerType>
-inline const IntegerType IntegerTypeMinimumValue() {
+constexpr IntegerType IntegerTypeMinimumValue() {
   return std::numeric_limits<IntegerType>::min();
 }
 template <>
-inline const IntegerValue IntegerTypeMinimumValue() {
+constexpr IntegerValue IntegerTypeMinimumValue() {
   return kMinIntegerValue;
 }
 
@@ -111,11 +111,26 @@ class ThetaLambdaTree {
   // allows to keep the same memory for each call.
   void Reset(int num_events);
 
+  // Recomputes the values of internal nodes of the tree from the values in the
+  // leaves. We enable batching modifications to the tree by providing
+  // DelayedXXX() methods that run in O(1), but those methods do not
+  // update internal nodes. This breaks tree invariants, so that GetXXX()
+  // methods will not reflect modifications made to events.
+  // RecomputeTreeForDelayedOperations() restores those invariants in O(n).
+  // Thus, batching operations can be done by first doing calls to DelayedXXX()
+  // methods, then calling RecomputeTreeForDelayedOperations() once.
+  void RecomputeTreeForDelayedOperations();
+
   // Makes event present and updates its initial envelope and min/max energies.
   // The initial_envelope must be >= ThetaLambdaTreeNegativeInfinity().
   // This updates the tree in O(log n).
   void AddOrUpdateEvent(int event, IntegerType initial_envelope,
                         IntegerType energy_min, IntegerType energy_max);
+
+  // Delayed version of AddOrUpdateEvent(),
+  // see RecomputeTreeForDelayedOperations().
+  void DelayedAddOrUpdateEvent(int event, IntegerType initial_envelope,
+                               IntegerType energy_min, IntegerType energy_max);
 
   // Adds event to the lambda part of the tree only.
   // This will leave GetEnvelope() unchanged, only GetOptionalEnvelope() can
@@ -125,8 +140,17 @@ class ThetaLambdaTree {
   void AddOrUpdateOptionalEvent(int event, IntegerType initial_envelope_opt,
                                 IntegerType energy_max);
 
+  // Delayed version of AddOrUpdateOptionalEvent(),
+  // see RecomputeTreeForDelayedOperations().
+  void DelayedAddOrUpdateOptionalEvent(int event,
+                                       IntegerType initial_envelope_opt,
+                                       IntegerType energy_max);
+
   // Makes event absent, compute the new envelope in O(log n).
   void RemoveEvent(int event);
+
+  // Delayed version of RemoveEvent(), see RecomputeTreeForDelayedOperations().
+  void DelayedRemoveEvent(int event);
 
   // Returns the maximum envelope using all the energy_min in O(1).
   // If theta is empty, returns ThetaLambdaTreeNegativeInfinity().
@@ -171,15 +195,24 @@ class ThetaLambdaTree {
 
   // Getters.
   IntegerType EnergyMin(int event) const {
-    return tree_sum_of_energy_min_[GetLeafFromEvent(event)];
+    return tree_[GetLeafFromEvent(event)].sum_of_energy_min;
   }
 
  private:
+  struct TreeNode {
+    IntegerType envelope;
+    IntegerType envelope_opt;
+    IntegerType sum_of_energy_min;
+    IntegerType max_of_energy_delta;
+  };
+
+  TreeNode ComposeTreeNodes(TreeNode left, TreeNode right);
+
   int GetLeafFromEvent(int event) const;
   int GetEventFromLeaf(int leaf) const;
 
   // Propagates the change of leaf energies and envelopes towards the root.
-  void RefreshNode(int leaf);
+  void RefreshNode(int node);
 
   // Finds the maximum leaf under node such that
   // initial_envelope(leaf) + sum_{leaf' >= leaf} energy_min(leaf')
@@ -202,12 +235,17 @@ class ThetaLambdaTree {
   int num_leaves_;
   int power_of_two_;
 
+  // A bool used in debug mode, to check that sequences of delayed operations
+  // are ended by Reset() or RecomputeTreeForDelayedOperations().
+  bool leaf_nodes_have_delayed_operations_ = false;
+
   // Envelopes and energies of nodes.
-  std::vector<IntegerType> tree_envelope_;
-  std::vector<IntegerType> tree_envelope_opt_;
-  std::vector<IntegerType> tree_sum_of_energy_min_;
-  std::vector<IntegerType> tree_max_of_energy_delta_;
+  std::vector<TreeNode> tree_;
 };
+
+// Explicit instantiations in theta_Tree.cc.
+extern template class ThetaLambdaTree<IntegerValue>;
+extern template class ThetaLambdaTree<int64>;
 
 }  // namespace sat
 }  // namespace operations_research

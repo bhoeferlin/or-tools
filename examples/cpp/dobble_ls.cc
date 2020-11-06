@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -18,7 +18,7 @@
 // generalized: we have N cards, each with K different symbols, and
 // there are N different symbols overall.
 //
-// This is a feasability problem. We transform that into an
+// This is a feasibility problem. We transform that into an
 // optimization problem where we penalize cards whose intersection is
 // of cardinality different from 1. A feasible solution of the
 // original problem is a solution with a zero cost.
@@ -32,11 +32,11 @@
 #include <algorithm>
 #include <vector>
 
+#include "absl/random/random.h"
+#include "absl/strings/str_format.h"
 #include "ortools/base/commandlineflags.h"
 #include "ortools/base/integral_types.h"
 #include "ortools/base/map_util.h"
-#include "ortools/base/random.h"
-#include "ortools/base/stringprintf.h"
 #include "ortools/constraint_solver/constraint_solveri.h"
 #include "ortools/util/bitset.h"
 
@@ -383,13 +383,16 @@ class SwapSymbolsOnCardPairs : public DobbleOperator {
 
  protected:
   bool MakeOneNeighbor() override {
-    const int num_swaps = rand_.Uniform(max_num_swaps_ - 1) + 2;
+    const int num_swaps =
+        absl::Uniform<int32_t>(rand_, 0, max_num_swaps_ - 1) + 2;
     for (int i = 0; i < num_swaps; ++i) {
-      const int card_1 = rand_.Uniform(num_cards_);
-      const int symbol_index_1 = rand_.Uniform(num_symbols_per_card_);
+      const int card_1 = absl::Uniform<int32_t>(rand_, 0, num_cards_);
+      const int symbol_index_1 =
+          absl::Uniform<int32_t>(rand_, 0, num_symbols_per_card_);
       const int symbol_1 = symbols_per_card_[card_1][symbol_index_1];
-      const int card_2 = rand_.Uniform(num_cards_);
-      const int symbol_index_2 = rand_.Uniform(num_symbols_per_card_);
+      const int card_2 = absl::Uniform<int32_t>(rand_, 0, num_cards_);
+      const int symbol_index_2 =
+          absl::Uniform<int32_t>(rand_, 0, num_symbols_per_card_);
       const int symbol_2 = symbols_per_card_[card_2][symbol_index_2];
       SwapTwoSymbolsOnCards(card_1, symbol_1, card_2, symbol_2);
     }
@@ -399,7 +402,7 @@ class SwapSymbolsOnCardPairs : public DobbleOperator {
   void InitNeighborhoodSearch() override {}
 
  private:
-  ACMRandom rand_;
+  std::mt19937 rand_;
   const int max_num_swaps_;
 };
 
@@ -465,8 +468,8 @@ class DobbleFilter : public IntVarLocalSearchFilter {
   // The LocalSearchFilter::Accept() API also takes a deltadelta,
   // which is the difference between the current delta and the last
   // delta that was given to Accept() -- but we don't use it here.
-  bool Accept(const Assignment* delta,
-              const Assignment* unused_deltadelta) override {
+  bool Accept(const Assignment* delta, const Assignment* unused_deltadelta,
+              int64 objective_min, int64 objective_max) override {
     const Assignment::IntContainer& solution_delta = delta->IntVarContainer();
     const int solution_delta_size = solution_delta.Size();
 
@@ -640,7 +643,8 @@ void SolveDobble(int num_cards, int num_symbols, int num_symbols_per_card) {
   std::vector<std::vector<IntVar*> > card_symbol_vars(num_cards);
   std::vector<IntVar*> all_card_symbol_vars;
   for (int card_index = 0; card_index < num_cards; ++card_index) {
-    solver.MakeBoolVarArray(num_symbols, StringPrintf("card_%i_", card_index),
+    solver.MakeBoolVarArray(num_symbols,
+                            absl::StrFormat("card_%i_", card_index),
                             &card_symbol_vars[card_index]);
     for (int symbol_index = 0; symbol_index < num_symbols; ++symbol_index) {
       all_card_symbol_vars.push_back(
@@ -719,15 +723,17 @@ void SolveDobble(int num_cards, int num_symbols, int num_symbols_per_card) {
   // Main decision builder that regroups the first solution decision
   // builder and the combination of local search operators and
   // filters.
+  LocalSearchFilterManager* filter_manager =
+      solver.RevAlloc(new LocalSearchFilterManager(filters));
   DecisionBuilder* const final_db = solver.MakeLocalSearchPhase(
       all_card_symbol_vars, build_db,
       solver.MakeLocalSearchPhaseParameters(
-          solver.ConcatenateOperators(operators, true),
+          objective_var, solver.ConcatenateOperators(operators, true),
           nullptr,  // Sub decision builder, not needed here.
           nullptr,  // Limit the search for improving move, we will stop
                     // the exploration of the local search at the first
                     // improving solution (first accept).
-          filters));
+          filter_manager));
 
   std::vector<SearchMonitor*> monitors;
   // Optimize var search monitor.
@@ -756,5 +762,5 @@ int main(int argc, char** argv) {
   const int kCards = kSymbolsPerCard * (kSymbolsPerCard - 1) + 1;
   const int kSymbols = kCards;
   operations_research::SolveDobble(kCards, kSymbols, kSymbolsPerCard);
-  return 0;
+  return EXIT_SUCCESS;
 }

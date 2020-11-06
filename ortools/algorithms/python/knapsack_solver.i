@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,16 +14,20 @@
 // Python wrapping of ../knapsack_solver.h. See that file.
 //
 // USAGE EXAMPLES:
-// - examples/python/knapsack.py
+// - ortools/algorithms/samples/knapsack.py
 // - ./pywrapknapsack_solver_test.py
 
-%include "ortools/base/base.i"
+%include "stdint.i"
 
+%include "ortools/base/base.i"
 %import "ortools/util/python/vector.i"
 
 %{
 #include "ortools/algorithms/knapsack_solver.h"
 %}
+
+typedef int64_t int64;
+typedef uint64_t uint64;
 
 %ignoreall
 %unignore operations_research;
@@ -34,6 +38,7 @@
 %unignore operations_research::KnapsackSolver::Solve;
 // TODO(user): unit test BestSolutionContains.
 %unignore operations_research::KnapsackSolver::BestSolutionContains;
+%unignore operations_research::KnapsackSolver::set_time_limit;
 %unignore operations_research::KnapsackSolver::set_use_reduction;
 
 %unignore operations_research::KnapsackSolver::SolverType;

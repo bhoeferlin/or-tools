@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,9 +14,10 @@
 #ifndef OR_TOOLS_BASE_STATUSOR_H_
 #define OR_TOOLS_BASE_STATUSOR_H_
 
-#include "ortools/base/status.h"
+#include "absl/status/status.h"
+#include "ortools/base/logging.h"
 
-namespace util {
+namespace absl {
 
 // WARNING: This makes a copy of its payload. Ugly.
 template <class T>
@@ -32,18 +33,26 @@ struct StatusOr {
       : value_(other.value_), status_(other.status_) {}
 
   bool ok() const { return status_.ok(); }
-  const T& ValueOrDie() const {
+  const T& value() const {
     CHECK(ok());
     return value_;
   }
 
   Status status() const { return status_; }
 
+  template <typename U>
+  T value_or(U&& default_value) const& {
+    if (ok()) {
+      return value_;
+    }
+    return std::forward<U>(default_value);
+  }
+
  private:
   T value_;
   Status status_;
 };
 
-}  // namespace util
+}  // namespace absl
 
 #endif  // OR_TOOLS_BASE_STATUSOR_H_

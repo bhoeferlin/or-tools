@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,9 +12,10 @@
 // limitations under the License.
 
 #include "ortools/sat/restart.h"
-#include "ortools/base/stringprintf.h"
 
-#include "ortools/base/split.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
+#include "ortools/port/proto_utils.h"
 
 namespace operations_research {
 namespace sat {
@@ -34,8 +35,13 @@ void RestartPolicy::Reset() {
   trail_size_running_average_.Reset(parameters_.blocking_restart_window_size());
 
   // Compute the list of restart algorithms to cycle through.
-  strategies_.assign(parameters_.restart_algorithms().begin(),
-                     parameters_.restart_algorithms().end());
+  //
+  // TODO(user): for some reason, strategies_.assign() does not work as the
+  // returned type of the proto enum iterator is int ?!
+  strategies_.clear();
+  for (int i = 0; i < parameters_.restart_algorithms_size(); ++i) {
+    strategies_.push_back(parameters_.restart_algorithms(i));
+  }
   if (strategies_.empty()) {
     const std::vector<std::string> string_values = absl::StrSplit(
         parameters_.default_restart_algorithms(), ',', absl::SkipEmpty());
@@ -57,7 +63,7 @@ void RestartPolicy::Reset() {
                      << string_value << "'.";
         continue;
       }
-#else   // __PORTABLE_PLATFORM__
+#else  // __PORTABLE_PLATFORM__
       if (!SatParameters::RestartAlgorithm_Parse(string_value, &tmp)) {
         LOG(WARNING) << "Couldn't parse the RestartAlgorithm name: '"
                      << string_value << "'.";
@@ -112,9 +118,15 @@ bool RestartPolicy::ShouldRestart() {
     if (conflicts_until_next_strategy_change_ == 0) {
       strategy_counter_++;
       strategy_change_conflicts_ +=
-          parameters_.strategy_change_increase_ratio() *
-          strategy_change_conflicts_;
+          static_cast<int>(parameters_.strategy_change_increase_ratio() *
+                           strategy_change_conflicts_);
       conflicts_until_next_strategy_change_ = strategy_change_conflicts_;
+
+      // The LUBY_RESTART strategy is considered the "stable" mode and we change
+      // the polariy heuristic while under it.
+      decision_policy_->SetStablePhase(
+          strategies_[strategy_counter_ % strategies_.size()] ==
+          SatParameters::LUBY_RESTART);
     }
 
     // Reset the various restart strategies.
@@ -160,13 +172,20 @@ void RestartPolicy::OnConflict(int conflict_trail_index,
 
 std::string RestartPolicy::InfoString() const {
   std::string result =
-      StringPrintf("  num restarts: %d\n", num_restarts_) +
-      StringPrintf("  conflict decision level avg: %f\n",
-                   dl_running_average_.GlobalAverage()) +
-      StringPrintf("  conflict lbd avg: %f\n",
-                   lbd_running_average_.GlobalAverage()) +
-      StringPrintf("  conflict trail size avg: %f\n",
-                   trail_size_running_average_.GlobalAverage());
+      absl::StrFormat("  num restarts: %d\n", num_restarts_) +
+      absl::StrFormat(
+          "  current_strategy: %s\n",
+          ProtoEnumToString<SatParameters::RestartAlgorithm>(
+              strategies_[strategy_counter_ % strategies_.size()])) +
+      absl::StrFormat("  conflict decision level avg: %f window: %f\n",
+                      dl_running_average_.GlobalAverage(),
+                      dl_running_average_.WindowAverage()) +
+      absl::StrFormat("  conflict lbd avg: %f window: %f\n",
+                      lbd_running_average_.GlobalAverage(),
+                      lbd_running_average_.WindowAverage()) +
+      absl::StrFormat("  conflict trail size avg: %f window: %f\n",
+                      trail_size_running_average_.GlobalAverage(),
+                      trail_size_running_average_.WindowAverage());
   return result;
 }
 

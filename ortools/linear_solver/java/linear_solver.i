@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -25,14 +25,16 @@
 //
 // TODO(user): unit test all the APIs that are currently marked with 'no test'.
 
-%include ortools/base/base.i
-
 %include "enums.swg"  // For native Java enum support.
+%include "stdint.i"
+
+%include "ortools/base/base.i"
 
 // We prefer our in-house vector wrapper to std_vector.i, because it
 // converts to and from native java arrays.
-%include "ortools/util/java/vector.i"
+%import "ortools/util/java/vector.i"
 
+%include "ortools/util/java/proto.i"
 
 // We need to forward-declare the proto here, so that the PROTO_* macros
 // involving them work correctly. The order matters very much: this declaration
@@ -45,30 +47,191 @@ class MPSolutionResponse;
 
 %{
 #include "ortools/linear_solver/linear_solver.h"
+#include "ortools/linear_solver/model_exporter.h"
 %}
 
 %typemap(javaimports) SWIGTYPE %{
 import java.lang.reflect.*;
 %}
 
+// Conversion of array of MPVariable or MPConstraint from/to C++ vectors.
+CONVERT_VECTOR_WITH_CAST(operations_research::MPVariable, MPVariable, REINTERPRET_CAST,
+    com/google/ortools/linearsolver);
+CONVERT_VECTOR_WITH_CAST(operations_research::MPConstraint, MPConstraint, REINTERPRET_CAST,
+    com/google/ortools/linearsolver);
+
+// Support the proto-based APIs.
+PROTO_INPUT(
+    operations_research::MPModelProto,
+    com.google.ortools.linearsolver.MPModelProto,
+    input_model);
+PROTO2_RETURN(
+    operations_research::MPModelProto,
+    com.google.ortools.linearsolver.MPModelProto);
+PROTO_INPUT(
+    operations_research::MPModelRequest,
+    com.google.ortools.linearsolver.MPModelRequest,
+    model_request);
+PROTO_INPUT(
+    operations_research::MPSolutionResponse,
+    com.google.ortools.linearsolver.MPSolutionResponse,
+    response);
+PROTO2_RETURN(
+    operations_research::MPSolutionResponse,
+    com.google.ortools.linearsolver.MPSolutionResponse);
+
+
 %extend operations_research::MPSolver {
-  std::string exportModelAsLpFormat(bool obfuscated) {
-    std::string output;
-    if (!$self->ExportModelAsLpFormat(obfuscated, &output)) return "";
-    return output;
+  /**
+   * Loads a model and returns the error message, which will be empty iff the
+   * model is valid.
+   */
+  std::string loadModelFromProto(
+      const operations_research::MPModelProto& input_model) {
+    std::string error_message;
+    $self->LoadModelFromProto(input_model, &error_message);
+    return error_message;
   }
 
-  std::string exportModelAsMpsFormat(bool fixed_format, bool obfuscated) {
-    std::string output;
-    if (!$self->ExportModelAsMpsFormat(fixed_format, obfuscated, &output)) {
-      return "";
+  // Replaces MPSolver::LoadModelFromProtoWithUniqueNamesOrDie
+  std::string loadModelFromProtoWithUniqueNamesOrDie(
+      const operations_research::MPModelProto& input_model) {
+    std::unordered_set<std::string> names;
+    for (const auto var : input_model.variable()) {
+      if (!var.name().empty() && !names.insert(var.name()).second) {
+        LOG(FATAL) << "found duplicated variable names " + var.name();
+      }
     }
-    return output;
+    std::string error_message;
+    $self->LoadModelFromProtoWithUniqueNamesOrDie(input_model, &error_message);
+    return error_message;
   }
-}
+
+  /**
+   * Export the loaded model to proto and returns it.
+   */
+  operations_research::MPModelProto exportModelToProto() {
+    operations_research::MPModelProto model;
+    $self->ExportModelToProto(&model);
+    return model;
+  }
+
+  /**
+   * Fills the solution found to a response proto and returns it.
+   */
+  operations_research::MPSolutionResponse createSolutionResponseProto() {
+    operations_research::MPSolutionResponse response;
+    $self->FillSolutionResponseProto(&response);
+    return response;
+  }
+
+  /**
+   * Load a solution encoded in a protocol buffer onto this solver for easy
+  access via the MPSolver interface.
+   *
+   * IMPORTANT: This may only be used in conjunction with ExportModel(),
+  following this example:
+   *
+   \code
+     MPSolver my_solver;
+     ... add variables and constraints ...
+     MPModelProto model_proto;
+     my_solver.ExportModelToProto(&model_proto);
+     MPSolutionResponse solver_response;
+     MPSolver::SolveWithProto(model_proto, &solver_response);
+     if (solver_response.result_status() == MPSolutionResponse::OPTIMAL) {
+       CHECK_OK(my_solver.LoadSolutionFromProto(solver_response));
+       ... inspect the solution using the usual API: solution_value(), etc...
+     }
+  \endcode
+   *
+   * The response must be in OPTIMAL or FEASIBLE status.
+   *
+   * Returns a false if a problem arised (typically, if it wasn't used
+   *     like it should be):
+   * - loading a solution whose variables don't correspond to the solver's
+   *   current variables
+   * - loading a solution with a status other than OPTIMAL / FEASIBLE.
+   *
+   * Note: the objective value isn't checked. You can use VerifySolution() for
+   *       that.
+   */
+   bool loadSolutionFromProto(const MPSolutionResponse& response) {
+     return $self->LoadSolutionFromProto(response).ok();
+   }
+
+  /**
+   * Solves the given model proto and returns a response proto.
+   */
+  static operations_research::MPSolutionResponse solveWithProto(
+      const operations_research::MPModelRequest& model_request) {
+    operations_research::MPSolutionResponse response;
+    operations_research::MPSolver::SolveWithProto(model_request, &response);
+    return response;
+  }
+
+  /**
+   * Export the loaded model in LP format.
+   */
+  std::string exportModelAsLpFormat(
+      const operations_research::MPModelExportOptions& options =
+          operations_research::MPModelExportOptions()) {
+    operations_research::MPModelProto model;
+    $self->ExportModelToProto(&model);
+    return ExportModelAsLpFormat(model, options).value_or("");
+  }
+
+  /**
+   * Export the loaded model in MPS format.
+   */
+  std::string exportModelAsMpsFormat(
+      const operations_research::MPModelExportOptions& options =
+          operations_research::MPModelExportOptions()) {
+    operations_research::MPModelProto model;
+    $self->ExportModelToProto(&model);
+    return ExportModelAsMpsFormat(model, options).value_or("");
+  }
+
+  /**
+   * Sets a hint for solution.
+   *
+   * If a feasible or almost-feasible solution to the problem is already known,
+   * it may be helpful to pass it to the solver so that it can be used. A
+   * solver that supports this feature will try to use this information to
+   * create its initial feasible solution.
+   *
+   * Note that it may not always be faster to give a hint like this to the
+   * solver. There is also no guarantee that the solver will use this hint or
+   * try to return a solution "close" to this assignment in case of multiple
+   * optimal solutions.
+   */
+  void setHint(const std::vector<operations_research::MPVariable*>& variables,
+               const std::vector<double>& values) {
+    if (variables.size() != values.size()) {
+      LOG(FATAL) << "Different number of variables and values when setting "
+                 << "hint.";
+    }
+    std::vector<std::pair<const operations_research::MPVariable*, double> >
+        hint(variables.size());
+    for (int i = 0; i < variables.size(); ++i) {
+      hint[i] = std::make_pair(variables[i], values[i]);
+    }
+    $self->SetHint(hint);
+  }
+
+  /**
+   * Sets the number of threads to be used by the solver.
+   */
+  bool setNumThreads(int num_theads) {
+    return $self->SetNumThreads(num_theads).ok();
+  }
+}  // Extend operations_research::MPSolver
 
 // Add java code on MPSolver.
 %typemap(javacode) operations_research::MPSolver %{
+  /**
+   * Creates and returns an array of variables.
+   */
   public MPVariable[] makeVarArray(int count, double lb, double ub, boolean integer) {
     MPVariable[] array = new MPVariable[count];
     for (int i = 0; i < count; ++i) {
@@ -77,6 +240,9 @@ import java.lang.reflect.*;
     return array;
   }
 
+  /**
+   * Creates and returns an array of named variables.
+   */
   public MPVariable[] makeVarArray(int count, double lb, double ub, boolean integer,
                                    String var_name) {
     MPVariable[] array = new MPVariable[count];
@@ -109,7 +275,7 @@ import java.lang.reflect.*;
   public MPVariable[] makeBoolVarArray(int count, String var_name) {
     return makeVarArray(count, 0.0, 1.0, true, var_name);
   }
-%}
+%}  // %typemap(javacode) operations_research::MPSolver
 
 %ignoreall
 
@@ -119,6 +285,9 @@ import java.lang.reflect.*;
 %unignore operations_research::MPSolver;
 %unignore operations_research::MPSolver::MPSolver;
 %unignore operations_research::MPSolver::~MPSolver;
+%newobject operations_research::MPSolver::CreateSolver;
+%rename (createSolver) operations_research::MPSolver::CreateSolver;
+
 %unignore operations_research::MPConstraint;
 %unignore operations_research::MPVariable;
 %unignore operations_research::MPObjective;
@@ -133,11 +302,15 @@ import java.lang.reflect.*;
 %unignore operations_research::MPSolver::CBC_MIXED_INTEGER_PROGRAMMING;
 %unignore operations_research::MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING;
 %unignore operations_research::MPSolver::BOP_INTEGER_PROGRAMMING;
+%unignore operations_research::MPSolver::SAT_INTEGER_PROGRAMMING;
 // These aren't unit tested, as they only run on machines with a Gurobi license.
 %unignore operations_research::MPSolver::GUROBI_LINEAR_PROGRAMMING;
 %unignore operations_research::MPSolver::GUROBI_MIXED_INTEGER_PROGRAMMING;
+%rename (setGurobiLibraryPath) operations_research::MPSolver::SetGurobiLibraryPath;
 %unignore operations_research::MPSolver::CPLEX_LINEAR_PROGRAMMING;
 %unignore operations_research::MPSolver::CPLEX_MIXED_INTEGER_PROGRAMMING;
+%unignore operations_research::MPSolver::XPRESS_LINEAR_PROGRAMMING;
+%unignore operations_research::MPSolver::XPRESS_MIXED_INTEGER_PROGRAMMING;
 
 
 // Expose the MPSolver::ResultStatus enum.
@@ -169,14 +342,29 @@ import java.lang.reflect.*;
 %rename (reset) operations_research::MPSolver::Reset;  // no test
 %rename (infinity) operations_research::MPSolver::infinity;
 %rename (setTimeLimit) operations_research::MPSolver::set_time_limit;  // no test
+%rename (isMip) operations_research::MPSolver::IsMIP;
 
+// Proto-based API of the MPSolver. Use is encouraged.
+// Note: the following proto-based methods aren't listed here, but are
+// supported (that's because we re-implement them in java below):
+// - loadModelFromProto
+// - exportModelToProto
+// - createSolutionResponseProto
+// - solveWithProto
+%unignore operations_research::MPSolver::LoadStatus;
+%unignore operations_research::MPSolver::NO_ERROR;  // no test
+%unignore operations_research::MPSolver::UNKNOWN_VARIABLE_ID;  // no test
+// - loadSolutionFromProto;  // Use hand-written version.
 
 // Expose some of the more advanced MPSolver API.
 %rename (supportsProblemType) operations_research::MPSolver::SupportsProblemType;  // no test
 %rename (setSolverSpecificParametersAsString)
     operations_research::MPSolver::SetSolverSpecificParametersAsString;  // no test
+%rename (interruptSolve) operations_research::MPSolver::InterruptSolve;  // no test
 %rename (wallTime) operations_research::MPSolver::wall_time;
 %rename (clear) operations_research::MPSolver::Clear;  // no test
+%unignore operations_research::MPSolver::constraints;
+%unignore operations_research::MPSolver::variables;
 %rename (numVariables) operations_research::MPSolver::NumVariables;
 %rename (numConstraints) operations_research::MPSolver::NumConstraints;
 %rename (enableOutput) operations_research::MPSolver::EnableOutput;  // no test
@@ -195,6 +383,7 @@ import java.lang.reflect.*;
 %unignore operations_research::MPSolver::AT_UPPER_BOUND;  // no test
 %unignore operations_research::MPSolver::FIXED_VALUE;  // no test
 %unignore operations_research::MPSolver::BASIC;
+%ignore operations_research::MPSolver::SetStartingLpBasis; // no typemap for const vector<BasisStatus>&
 
 // MPVariable: writer API.
 %rename (setInteger) operations_research::MPVariable::SetInteger;
@@ -235,7 +424,6 @@ import java.lang.reflect.*;
 %rename (setOptimizationDirection) operations_research::MPObjective::SetOptimizationDirection;
 %rename (clear) operations_research::MPObjective::Clear;  // no test
 %rename (setOffset) operations_research::MPObjective::SetOffset;
-%rename (addOffset) operations_research::MPObjective::AddOffset;  // no test
 
 // MPObjective: reader API.
 %rename (value) operations_research::MPObjective::Value;
@@ -247,6 +435,7 @@ import java.lang.reflect.*;
 
 // MPSolverParameters API. For expert users only.
 // TODO(user): unit test all of it.
+
 %unignore operations_research::MPSolverParameters;  // no test
 %unignore operations_research::MPSolverParameters::MPSolverParameters;  // no test
 
@@ -293,10 +482,17 @@ import java.lang.reflect.*;
 %unignore operations_research::MPSolverParameters::SCALING_OFF;  // no test
 %unignore operations_research::MPSolverParameters::SCALING_ON;  // no test
 
-// We want to ignore the CoeffMap class; but since it inherits from some
-// std::unordered_map<>, swig complains about an undefined base class. Silence it.
-%warnfilter(401) CoeffMap;
+// Expose the model exporters.
+%unignore operations_research::MPModelExportOptions;
+%unignore operations_research::MPModelExportOptions::MPModelExportOptions;
+%typemap(javaclassmodifiers) operations_research::MPModelExportOptions
+    "public final class";
+%rename (Obfuscate) operations_research::MPModelExportOptions::obfuscate;
+%rename (LogInvalidNames) operations_research::MPModelExportOptions::log_invalid_names;
+%rename (ShowUnusedVariables) operations_research::MPModelExportOptions::show_unused_variables;
+%rename (MaxLineLength) operations_research::MPModelExportOptions::max_line_length;
 
 %include "ortools/linear_solver/linear_solver.h"
+%include "ortools/linear_solver/model_exporter.h"
 
 %unignoreall

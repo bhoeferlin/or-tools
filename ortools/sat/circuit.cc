@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,7 +15,7 @@
 
 #include <algorithm>
 
-#include <unordered_map>
+#include "absl/container/flat_hash_map.h"
 #include "ortools/base/map_util.h"
 #include "ortools/sat/sat_solver.h"
 
@@ -36,7 +36,7 @@ CircuitPropagator::CircuitPropagator(const int num_nodes,
   prev_.resize(num_nodes_, -1);
   next_literal_.resize(num_nodes_);
   must_be_in_cycle_.resize(num_nodes_);
-  std::unordered_map<LiteralIndex, int> literal_to_watch_index;
+  absl::flat_hash_map<LiteralIndex, int> literal_to_watch_index;
 
   const int num_arcs = tails.size();
   graph_.reserve(num_arcs);
@@ -55,12 +55,12 @@ CircuitPropagator::CircuitPropagator(const int num_nodes,
     }
 
     if (assignment_.LiteralIsTrue(literal)) {
-      CHECK_EQ(next_[tail], -1)
-          << "Trivially UNSAT or duplicate arcs while adding " << tail << " -> "
-          << head;
-      CHECK_EQ(prev_[head], -1)
-          << "Trivially UNSAT or duplicate arcs while adding " << tail << " -> "
-          << head;
+      if (next_[tail] != -1 || prev_[head] != -1) {
+        VLOG(1) << "Trivially UNSAT or duplicate arcs while adding " << tail
+                << " -> " << head;
+        model->GetOrCreate<SatSolver>()->NotifyThatModelIsUnsat();
+        return;
+      }
       AddArc(tail, head, kNoLiteralIndex);
       continue;
     }
@@ -97,6 +97,12 @@ void CircuitPropagator::RegisterWith(GenericLiteralWatcher* watcher) {
   watcher->RegisterReversibleClass(id, this);
   watcher->RegisterReversibleInt(id, &propagation_trail_index_);
   watcher->RegisterReversibleInt(id, &rev_must_be_in_cycle_size_);
+
+  // This is needed in case a Literal is used for more than one arc, we may
+  // propagate it to false/true here, and it might trigger more propagation.
+  //
+  // TODO(user): come up with a test that fail when this is not here.
+  watcher->NotifyThatPropagatorMayNotReachFixedPointInOnePass(id);
 }
 
 void CircuitPropagator::SetLevel(int level) {

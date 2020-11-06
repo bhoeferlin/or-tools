@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,7 +14,7 @@
 #ifndef OR_TOOLS_LP_DATA_PERMUTATION_H_
 #define OR_TOOLS_LP_DATA_PERMUTATION_H_
 
-#include "ortools/base/random.h"
+#include "absl/random/random.h"
 #include "ortools/lp_data/lp_types.h"
 #include "ortools/util/return_macros.h"
 

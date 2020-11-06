@@ -4,7 +4,7 @@ declare -r libname="${1}"
 declare -r main_dir="${2}"
 
 # List all files on ortools/"${main_dir}"
-all_cc=( $(ls ortools/"${main_dir}"/*.cc | grep -v test.cc | LC_COLLATE=C sort -u) )
+all_cc=( $(ls ortools/"${main_dir}"/*.cc ortools/gen/ortools/"${main_dir}"/lpi_glop*.cc | grep -v test.cc | LC_COLLATE=C sort -u) )
 all_h=( $(ls ortools/"${main_dir}"/*.h | LC_COLLATE=C sort -u) )
 declare -a all_proto
 if ls ortools/"${main_dir}"/*proto >& /dev/null; then
@@ -31,6 +31,7 @@ function print_paths {
     [[ "${dep}" == *.pb.* ]] && dir="\$(GEN_DIR)/"
     if [[ "${dep}" == *.\$O ]]; then
       dir="\$(OBJ_DIR)/"
+      dep="${dep/ortools\/gen\/}"  # Remove the "ortools/gen/" directory.
       dep="${dep/ortools\/}"  # Remove the "ortools/" directory.
     fi
     echo -e -n " ${dir}${dep}"
@@ -41,8 +42,25 @@ function print_paths {
 # Output: all the files these files depend on (given by their #include,
 #         by their "import" for proto files).
 function get_dependencies {
-   grep -e "^\(#include\|import\) \"ortools/" $* \
+   grep -e "^\(#include\|import\) \"ortools/" "$*" \
      | cut -d '"' -f 2 | LC_COLLATE=C sort -u
+}
+
+# Input: filename sub_dir
+# Output: dependencies command for that file:
+#    objs/sub_dir/filename.o : ortools/
+function print_dependencies {
+  if [[ -e "ortools/${2}/${1}.cc" ]]; then
+    local path="ortools/${2}/${1}.cc"
+  elif [[ -e "ortools/gen/ortools/${2}/${1}.cc" ]]; then
+    local path="ortools/gen/ortools/${2}/${1}.cc"
+  fi
+  cmd=$(gcc -std=c++17 -MM -MT "objs/${2}/${1}.o" -c "${path}" -I. -Iortools/gen \
+            -isystem dependencies/install/include \
+            -isystem dependencies/install/include/coin \
+            -DUSE_GLOP -DUSE_BOP -DUSE_CLP -DUSE_CBC -DUSE_SCIP \
+            | sed -e "s/\.o:/.\$O:/g")
+  echo "${cmd} | \$(OBJ_DIR)/${2}"
 }
 
 # Generate XXX_DEPS macro
@@ -57,38 +75,17 @@ print_paths "${all_cc[@]/.cc/.\$O}" "${all_proto[@]/.proto/.pb.\$O}"
 echo ""
 echo
 
-# Generate dependencies for .h files
-for file in "${all_h[@]}"; do
-  name=$(basename "${file}" .h)
-  # Print makefile command for .h.
-  echo -e "\$(SRC_DIR)/ortools/${main_dir}/${name}.h: ;"
-  echo
-done
-
 # Generate dependencies and compilation command for .cc files.
 for file in "${all_cc[@]}"
 do
   name=$(basename "${file}" .cc)
-  if [[ -e "${file/.cc/.h}" ]]; then
-    header="${file/.cc/.h}"
-  else
-    header=""
-  fi
   # Compute dependencies.
-  all_deps=( $(get_dependencies "${file} ${header}") )
-  # Print makefile command for .cc.
-  echo -e "\$(SRC_DIR)/ortools/${main_dir}/${name}.cc: ;"
-  echo
-  # Print makefile command for .$O.
-  echo -e "\$(OBJ_DIR)/${main_dir}/${name}.\$O: \\"
-  echo -e " \$(SRC_DIR)/ortools/${main_dir}/${name}.cc \\"
-  if [[ "${#all_deps[@]}" != 0 ]];then
-    print_paths "${all_deps[@]}"
-    echo -e " \\"
+  print_dependencies "${name}" "${main_dir}"
+  if [[ -e "ortools/${main_dir}/${name}.cc" ]]; then
+    echo -e "\t\$(CCC) \$(CFLAGS) -c \$(SRC_DIR)\$Sortools\$S${main_dir}\$S${name}.cc \$(OBJ_OUT)\$(OBJ_DIR)\$S${main_dir}\$S${name}.\$O"
+  elif [[ -e "ortools/gen/ortools/${main_dir}/${name}.cc" ]]; then
+    echo -e "\t\$(CCC) \$(CFLAGS) -c \$(GEN_PATH)\$Sortools\$S${main_dir}\$S${name}.cc \$(OBJ_OUT)\$(OBJ_DIR)\$S${main_dir}\$S${name}.\$O"
   fi
-  print_paths "${all_proto[@]/.proto/.pb.h}"
-  echo -e " | \$(OBJ_DIR)/${main_dir}"
-  echo -e "\t\$(CCC) \$(CFLAGS) -c \$(SRC_DIR)\$Sortools\$S${main_dir}\$S${name}.cc \$(OBJ_OUT)\$(OBJ_DIR)\$S${main_dir}\$S${name}.\$O"
   echo
 done
 

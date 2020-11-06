@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -11,7 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//
 // Linear programming example that shows how to use the API.
 
 #include "ortools/base/commandlineflags.h"
@@ -20,9 +19,21 @@
 #include "ortools/linear_solver/linear_solver.pb.h"
 
 namespace operations_research {
-void RunLinearProgrammingExample(
-    MPSolver::OptimizationProblemType optimization_problem_type) {
-  MPSolver solver("LinearProgrammingExample", optimization_problem_type);
+void RunLinearProgrammingExample(const std::string& solver_id) {
+  LOG(INFO) << "---- Linear programming example with " << solver_id << " ----";
+  MPSolver::OptimizationProblemType problem_type;
+  if (!MPSolver::ParseSolverType(solver_id, &problem_type)) {
+    LOG(INFO) << "Solver id " << solver_id << " not recognized";
+    return;
+  }
+
+  if (!MPSolver::SupportsProblemType(problem_type)) {
+    LOG(INFO) << "Supports for solver " << solver_id << " not linked in.";
+    return;
+  }
+
+  MPSolver solver("IntegerProgrammingExample", problem_type);
+
   const double infinity = solver.infinity();
   // x1, x2 and x3 are continuous non-negative variables.
   MPVariable* const x1 = solver.MakeNumVar(0.0, infinity, "x1");
@@ -91,36 +102,20 @@ void RunLinearProgrammingExample(
 }
 
 void RunAllExamples() {
-#if defined(USE_GLOP)
-  LOG(INFO) << "---- Linear programming example with GLOP ----";
-  RunLinearProgrammingExample(MPSolver::GLOP_LINEAR_PROGRAMMING);
-#endif  // USE_GLOP
-#if defined(USE_GLPK)
-  LOG(INFO) << "---- Linear programming example with GLPK ----";
-  RunLinearProgrammingExample(MPSolver::GLPK_LINEAR_PROGRAMMING);
-#endif  // USE_GLPK
-#if defined(USE_CLP)
-  LOG(INFO) << "---- Linear programming example with CLP ----";
-  RunLinearProgrammingExample(MPSolver::CLP_LINEAR_PROGRAMMING);
-#endif  // USE_CLP
-#if defined(USE_SLM)
-  LOG(INFO) << "---- Linear programming example with Sulum ----";
-  RunLinearProgrammingExample(MPSolver::SULUM_LINEAR_PROGRAMMING);
-#endif  // USE_SLM
-#if defined(USE_GUROBI)
-  LOG(INFO) << "---- Linear programming example with Gurobi ----";
-  RunLinearProgrammingExample(MPSolver::GUROBI_LINEAR_PROGRAMMING);
-#endif  // USE_GUROBI
-#if defined(USE_CPLEX)
-  LOG(INFO) << "---- Linear programming example with CPLEX ----";
-  RunLinearProgrammingExample(MPSolver::CPLEX_LINEAR_PROGRAMMING);
-#endif  // USE_CPLEX
+  RunLinearProgrammingExample("GLOP");
+  RunLinearProgrammingExample("CLP");
+  RunLinearProgrammingExample("GUROBI_LP");
+  RunLinearProgrammingExample("CPLEX_LP");
+  RunLinearProgrammingExample("GLPK_LP");
+  RunLinearProgrammingExample("XPRESS_LP");
 }
 }  // namespace operations_research
 
 int main(int argc, char** argv) {
-  base::SetFlag(&FLAGS_alsologtostderr, true);
+  google::InitGoogleLogging(argv[0]);
+  absl::SetFlag(&FLAGS_logtostderr, true);
+  absl::SetFlag(&FLAGS_log_prefix, false);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   operations_research::RunAllExamples();
-  return 0;
+  return EXIT_SUCCESS;
 }

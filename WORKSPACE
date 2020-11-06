@@ -1,48 +1,87 @@
-#Import the gflags files.
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
+http_archive(
+    name = "zlib",
+    build_file = "@com_google_protobuf//:third_party/zlib.BUILD",
+    sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
+    strip_prefix = "zlib-1.2.11",
+    urls = [
+        "https://mirror.bazel.build/zlib.net/zlib-1.2.11.tar.gz",
+        "https://zlib.net/zlib-1.2.11.tar.gz",
+    ],
+)
+
 git_repository(
-    name   = "com_github_gflags_gflags",
-    commit = "f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
+    name = "com_github_gflags_gflags",
+    commit = "e171aa2",  # release v2.2.2
     remote = "https://github.com/gflags/gflags.git",
 )
 
-#Import the glog files.
-new_git_repository(
-    name   = "com_github_glog_glog",
-    build_file = "//bazel:glog.BUILD",
+git_repository(
+    name = "com_github_glog_glog",
+    commit = "96a2f23",  # release v0.4.0
     remote = "https://github.com/google/glog.git",
-    tag = "v0.3.5",
 )
 
-# proto_library rules implicitly depend on @com_google_protobuf//:protoc,
-# which is the proto-compiler.
-# This statement defines the @com_google_protobuf repo.
+git_repository(
+    name = "bazel_skylib",
+    commit = "e59b620",  # release 1.0.2
+    remote = "https://github.com/bazelbuild/bazel-skylib.git",
+)
+
+# Python Rules
 http_archive(
+    name = "rules_python",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.0.2/rules_python-0.0.2.tar.gz",
+    strip_prefix = "rules_python-0.0.2",
+    sha256 = "b5668cde8bb6e3515057ef465a35ad712214962f0b3a314e551204266c7be90c",
+)
+
+# Protobuf
+git_repository(
     name = "com_google_protobuf",
-    urls = ["https://github.com/google/protobuf/archive/b4b0e304be5a68de3d0ee1af9b286f958750f5e4.zip"],
-    strip_prefix = "protobuf-b4b0e304be5a68de3d0ee1af9b286f958750f5e4",
-    sha256 = "ff771a662fb6bd4d3cc209bcccedef3e93980a49f71df1e987f6afa3bcdcba3a",
+    commit = "fde7cf7",  # release v3.13.0
+    remote = "https://github.com/protocolbuffers/protobuf.git",
 )
 
-# cc_proto_library rules implicitly depend on
-# @com_google_protobuf_cc//:cc_toolchain, which is the C++ proto runtime
-# (base classes and common utilities).
+load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
+# Load common dependencies.
+protobuf_deps()
+
+git_repository(
+    name = "com_google_absl",
+    commit = "b56cbdd", # release 20200923
+    remote = "https://github.com/abseil/abseil-cpp.git",
+)
+
 http_archive(
-    name = "com_google_protobuf_cc",
-    urls = ["https://github.com/google/protobuf/archive/b4b0e304be5a68de3d0ee1af9b286f958750f5e4.zip"],
-    strip_prefix = "protobuf-b4b0e304be5a68de3d0ee1af9b286f958750f5e4",
-    sha256 = "ff771a662fb6bd4d3cc209bcccedef3e93980a49f71df1e987f6afa3bcdcba3a",
-)
-
-new_http_archive(
     name = "gtest",
-    url = "https://github.com/google/googletest/archive/release-1.8.0.zip",
     build_file = "//bazel:gtest.BUILD",
     strip_prefix = "googletest-release-1.8.0/googletest",
+    url = "https://github.com/google/googletest/archive/release-1.8.0.zip",
 )
 
-new_http_archive(
+http_archive(
     name = "glpk",
-    url = "http://ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
-    sha256 = "9a5dab356268b4f177c33e00ddf8164496dc2434e83bd1114147024df983a3bb",
     build_file = "//bazel:glpk.BUILD",
+    sha256 = "4281e29b628864dfe48d393a7bedd781e5b475387c20d8b0158f329994721a10",
+    url = "http://ftp.gnu.org/gnu/glpk/glpk-4.65.tar.gz",
 )
+
+http_archive(
+    name = "bliss",
+    build_file = "//bazel:bliss.BUILD",
+    patches = ["//bazel:bliss-0.73.patch"],
+    sha256 = "f57bf32804140cad58b1240b804e0dbd68f7e6bf67eba8e0c0fa3a62fd7f0f84",
+    url = "http://www.tcs.hut.fi/Software/bliss/bliss-0.73.zip",
+)
+
+http_archive(
+    name = "scip",
+    build_file = "//bazel:scip.BUILD",
+    patches = [ "//bazel:scip.patch" ],
+    sha256 = "033bf240298d3a1c92e8ddb7b452190e0af15df2dad7d24d0572f10ae8eec5aa",
+    url = "https://github.com/google/or-tools/releases/download/v7.7/scip-7.0.1.tgz",
+)
+

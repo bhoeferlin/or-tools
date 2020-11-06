@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -70,17 +70,19 @@
 
 #include <map>
 #include <string>
+
 #ifdef HAS_PERF_SUBSYSTEM
-#include "absl/ortools/base/str_replace.h"
+#include "absl/strings/str_replace.h"
 #include "exegesis/exegesis/itineraries/perf_subsystem.h"
 #include "ortools/util/time_limit.h"
 #endif  // HAS_PERF_SUBSYSTEM
+
+#include "ortools/base/macros.h"
 #include "ortools/base/timer.h"
 
 namespace operations_research {
 
-// Returns the current thread's total memory usage in an human-readable
-// std::string.
+// Returns the current thread's total memory usage in an human-readable string.
 std::string MemoryUsage();
 
 // Forward declaration.
@@ -137,8 +139,8 @@ class StatsGroup {
       : name_(name), stats_(), time_distributions_() {}
   ~StatsGroup();
 
-  // Registers a Stat, which will appear in the std::string returned by
-  // StatString(). The Stat object must live as long as this StatsGroup.
+  // Registers a Stat, which will appear in the string returned by StatString().
+  // The Stat object must live as long as this StatsGroup.
   void Register(Stat* stat);
 
   // Returns this group name, followed by one line per Stat registered with this
@@ -173,6 +175,7 @@ class StatsGroup {
 class DistributionStat : public Stat {
  public:
   explicit DistributionStat(const std::string& name);
+  DistributionStat() : DistributionStat("") {}
   DistributionStat(const std::string& name, StatsGroup* group);
   ~DistributionStat() override {}
   void Reset() override;
@@ -219,6 +222,7 @@ class TimeDistribution : public DistributionStat {
  public:
   explicit TimeDistribution(const std::string& name)
       : DistributionStat(name), timer_() {}
+  TimeDistribution() : TimeDistribution("") {}
   TimeDistribution(const std::string& name, StatsGroup* group)
       : DistributionStat(name, group), timer_() {}
   std::string ValueAsString() const override;
@@ -232,10 +236,10 @@ class TimeDistribution : public DistributionStat {
   static double CyclesToSeconds(double num_cycles);
 
   // Adds a time in seconds to this distribution.
-  void AddTimeInSec(double value);
+  void AddTimeInSec(double seconds);
 
   // Adds a time in CPU cycles to this distribution.
-  void AddTimeInCycles(double value);
+  void AddTimeInCycles(double cycles);
 
   // Starts the timer in preparation of a StopTimerAndAddElapsedTime().
   inline void StartTimer() { timer_.Restart(); }
@@ -260,6 +264,7 @@ class RatioDistribution : public DistributionStat {
  public:
   explicit RatioDistribution(const std::string& name)
       : DistributionStat(name) {}
+  RatioDistribution() : RatioDistribution("") {}
   RatioDistribution(const std::string& name, StatsGroup* group)
       : DistributionStat(name, group) {}
   std::string ValueAsString() const override;
@@ -271,6 +276,7 @@ class DoubleDistribution : public DistributionStat {
  public:
   explicit DoubleDistribution(const std::string& name)
       : DistributionStat(name) {}
+  DoubleDistribution() : DoubleDistribution("") {}
   DoubleDistribution(const std::string& name, StatsGroup* group)
       : DistributionStat(name, group) {}
   std::string ValueAsString() const override;
@@ -282,6 +288,7 @@ class IntegerDistribution : public DistributionStat {
  public:
   explicit IntegerDistribution(const std::string& name)
       : DistributionStat(name) {}
+  IntegerDistribution() : IntegerDistribution("") {}
   IntegerDistribution(const std::string& name, StatsGroup* group)
       : DistributionStat(name, group) {}
   std::string ValueAsString() const override;
@@ -385,7 +392,7 @@ class DisabledScopedInstructionCounter {
 using ScopedTimeDistributionUpdater = EnabledScopedTimeDistributionUpdater;
 #ifdef HAS_PERF_SUBSYSTEM
 using ScopedInstructionCounter = EnabledScopedInstructionCounter;
-#else   // HAS_PERF_SUBSYSTEM
+#else  // HAS_PERF_SUBSYSTEM
 using ScopedInstructionCounter = DisabledScopedInstructionCounter;
 #endif  // HAS_PERF_SUBSYSTEM
 

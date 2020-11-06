@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,7 +15,7 @@
 
 #include <utility>
 
-#include "ortools/base/stringprintf.h"
+#include "absl/strings/str_format.h"
 #include "ortools/base/thorough_hash.h"
 #include "ortools/util/saturated_arithmetic.h"
 
@@ -277,10 +277,10 @@ std::string MutableUpperBoundedLinearConstraint::DebugString() {
   std::string result;
   for (BooleanVariable var : PossibleNonZeros()) {
     if (!result.empty()) result += " + ";
-    result += absl::StrFormat("%lld[%s]", GetCoefficient(var).value(),
-                              GetLiteral(var).DebugString().c_str());
+    result += absl::StrFormat("%d[%s]", GetCoefficient(var).value(),
+                              GetLiteral(var).DebugString());
   }
-  result += absl::StrFormat(" <= %lld", rhs_.value());
+  result += absl::StrFormat(" <= %d", rhs_.value());
   return result;
 }
 
@@ -948,7 +948,7 @@ void PbConstraints::Untrail(const Trail& trail, int trail_index) {
     for (ConstraintIndexWithCoeff& update : to_update_[literal.Index()]) {
       thresholds_[update.index] += update.coefficient;
 
-      // Only the constraints which where inspected during Propagate() need
+      // Only the constraints which were inspected during Propagate() need
       // inspection during Untrail().
       if (update.need_untrail_inspection) {
         update.need_untrail_inspection = false;
@@ -962,8 +962,8 @@ void PbConstraints::Untrail(const Trail& trail, int trail_index) {
   }
 }
 
-absl::Span<Literal> PbConstraints::Reason(const Trail& trail,
-                                          int trail_index) const {
+absl::Span<const Literal> PbConstraints::Reason(const Trail& trail,
+                                                int trail_index) const {
   SCOPED_TIME_STAT(&stats_);
   const PbConstraintsEnqueueHelper::ReasonInfo& reason_info =
       enqueue_helper_.reasons[trail_index];
@@ -986,10 +986,10 @@ UpperBoundedLinearConstraint* PbConstraints::ReasonPbConstraint(
 void PbConstraints::ComputeNewLearnedConstraintLimit() {
   const int num_constraints = constraints_.size();
   target_number_of_learned_constraint_ =
-      num_constraints + parameters_.pb_cleanup_increment();
+      num_constraints + parameters_->pb_cleanup_increment();
   num_learned_constraint_before_cleanup_ =
       static_cast<int>(target_number_of_learned_constraint_ /
-                       parameters_.pb_cleanup_ratio()) -
+                       parameters_->pb_cleanup_ratio()) -
       num_constraints;
 }
 
@@ -1065,7 +1065,7 @@ void PbConstraints::DeleteSomeLearnedConstraintIfNeeded() {
 
 void PbConstraints::BumpActivity(UpperBoundedLinearConstraint* constraint) {
   if (!constraint->is_learned()) return;
-  const double max_activity = parameters_.max_clause_activity_value();
+  const double max_activity = parameters_->max_clause_activity_value();
   constraint->set_activity(constraint->activity() +
                            constraint_activity_increment_);
   if (constraint->activity() > max_activity) {
@@ -1081,7 +1081,7 @@ void PbConstraints::RescaleActivities(double scaling_factor) {
 }
 
 void PbConstraints::UpdateActivityIncrement() {
-  const double decay = parameters_.clause_activity_decay();
+  const double decay = parameters_->clause_activity_decay();
   constraint_activity_increment_ *= 1.0 / decay;
 }
 

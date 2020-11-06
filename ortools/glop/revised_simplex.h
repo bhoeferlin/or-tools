@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -109,6 +109,7 @@
 #include "ortools/lp_data/lp_data.h"
 #include "ortools/lp_data/lp_print_utils.h"
 #include "ortools/lp_data/lp_types.h"
+#include "ortools/lp_data/scattered_vector.h"
 #include "ortools/lp_data/sparse_row.h"
 #include "ortools/util/random_engine.h"
 #include "ortools/util/time_limit.h"
@@ -164,8 +165,8 @@ class RevisedSimplex {
   // and try to use the previously computed solution as a warm-start. To disable
   // this behavior or give explicit warm-start data, use one of the State*()
   // functions below.
-  Status Solve(const LinearProgram& linear_program,
-               TimeLimit* time_limit) MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT Status Solve(const LinearProgram& lp,
+                                    TimeLimit* time_limit);
 
   // Do not use the current solution as a warm-start for the next Solve(). The
   // next Solve() will behave as if the class just got created.
@@ -189,6 +190,7 @@ class RevisedSimplex {
   int64 GetNumberOfIterations() const;
   Fractional GetVariableValue(ColIndex col) const;
   Fractional GetReducedCost(ColIndex col) const;
+  const DenseRow& GetReducedCosts() const;
   Fractional GetDualValue(RowIndex row) const;
   Fractional GetConstraintActivity(RowIndex row) const;
   VariableStatus GetVariableStatus(ColIndex col) const;
@@ -218,13 +220,17 @@ class RevisedSimplex {
   // class.
   ColIndex GetBasis(RowIndex row) const;
 
+  const ScatteredRow& GetUnitRowLeftInverse(RowIndex row) {
+    return update_row_.ComputeAndGetUnitRowLeftInverse(row);
+  }
+
   // Returns a copy of basis_ vector for outside applications (like cuts) to
   // have the correspondence between rows and columns of the dictionary.
   RowToColMapping GetBasisVector() const { return basis_; }
 
   const BasisFactorization& GetBasisFactorization() const;
 
-  // Returns statistics about this class as a std::string.
+  // Returns statistics about this class as a string.
   std::string StatString();
 
   // Computes the dictionary B^-1*N on-the-fly row by row. Returns the resulting
@@ -242,12 +248,12 @@ class RevisedSimplex {
   // Propagates parameters_ to all the other classes that need it.
   //
   // TODO(user): Maybe a better design is for them to have a reference to a
-  // unique parameters object? it will clutter a bit more these classes
-  // contructor though.
+  // unique parameters object? It will clutter a bit more these classes'
+  // constructor though.
   void PropagateParameters();
 
-  // Returns a std::string containing the same information as with
-  // GetSolverStats, but in a much more human-readable format. For example:
+  // Returns a string containing the same information as with GetSolverStats,
+  // but in a much more human-readable format. For example:
   //     Problem status                               : Optimal
   //     Solving time                                 : 1.843
   //     Number of iterations                         : 12345
@@ -260,12 +266,11 @@ class RevisedSimplex {
   //     Stop after first basis                       : 0
   std::string GetPrettySolverStats() const;
 
-  // Returns a std::string containing formatted information about the variable
+  // Returns a string containing formatted information about the variable
   // corresponding to column col.
   std::string SimpleVariableInfo(ColIndex col) const;
 
-  // Displays a short std::string with the current iteration and objective
-  // value.
+  // Displays a short string with the current iteration and objective value.
   void DisplayIterationInfo() const;
 
   // Displays the error bounds of the current solution.
@@ -363,15 +368,15 @@ class RevisedSimplex {
 
   // Initializes the starting basis. In most cases it starts by the all slack
   // basis and tries to apply some heuristics to replace fixed variables.
-  Status CreateInitialBasis() MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT Status CreateInitialBasis();
 
   // Sets the initial basis to the given columns, try to factorize it and
   // recompute the basic variable values.
-  Status InitializeFirstBasis(const RowToColMapping& initial_basis)
-      MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT Status
+  InitializeFirstBasis(const RowToColMapping& initial_basis);
 
   // Entry point for the solver initialization.
-  Status Initialize(const LinearProgram& lp) MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT Status Initialize(const LinearProgram& lp);
 
   // Saves the current variable statuses in solution_state_.
   void SaveState();
@@ -416,7 +421,7 @@ class RevisedSimplex {
   Fractional ComputeDirectionError(ColIndex col);
 
   // Computes the ratio of the basic variable corresponding to 'row'. A target
-  // bound (upper or lower) is choosen depending on the sign of the entering
+  // bound (upper or lower) is chosen depending on the sign of the entering
   // reduced cost and the sign of the direction 'd_[row]'. The ratio is such
   // that adding 'ratio * d_[row]' to the variable value changes it to its
   // target bound.
@@ -442,11 +447,6 @@ class RevisedSimplex {
                                   Fractional* step_length,
                                   Fractional* target_bound);
 
-  // Updates the primal phase-I costs of the given basic variables. Such
-  // variable has a cost of +1/-1 if it is primal-infeasible and of 0 otherwise.
-  template <typename Rows>
-  void UpdatePrimalPhaseICosts(const Rows& rows);
-
   // Chooses the leaving variable for the primal phase-I algorithm. The
   // algorithm follows more or less what is described in Istvan Maros's book in
   // chapter 9.6 and what is done for the dual phase-I algorithm which was
@@ -467,9 +467,9 @@ class RevisedSimplex {
   //   along this dual edge.
   // - target_bound: the bound at which the leaving variable should go when
   //   leaving the basis.
-  Status DualChooseLeavingVariableRow(RowIndex* leaving_row,
-                                      Fractional* cost_variation,
-                                      Fractional* target_bound) MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT Status DualChooseLeavingVariableRow(
+      RowIndex* leaving_row, Fractional* cost_variation,
+      Fractional* target_bound);
 
   // Updates the prices used by DualChooseLeavingVariableRow() after a simplex
   // iteration by using direction_. The prices are stored in
@@ -490,9 +490,9 @@ class RevisedSimplex {
   // Dual Phase-1 Algorithm for the Simplex Method", Computational Optimization
   // and Applications, October 2003, Volume 26, Issue 1, pp 63-81.
   // http://rd.springer.com/article/10.1023%2FA%3A1025102305440
-  Status DualPhaseIChooseLeavingVariableRow(
+  ABSL_MUST_USE_RESULT Status DualPhaseIChooseLeavingVariableRow(
       RowIndex* leaving_row, Fractional* cost_variation,
-      Fractional* target_bound) MUST_USE_RESULT;
+      Fractional* target_bound);
 
   // Makes sure the boxed variable are dual-feasible by setting them to the
   // correct bound according to their reduced costs. This is called
@@ -523,8 +523,9 @@ class RevisedSimplex {
   // Updates the system state according to the given basis pivot.
   // Returns an error if the update could not be done because of some precision
   // issue.
-  Status UpdateAndPivot(ColIndex entering_col, RowIndex leaving_row,
-                        Fractional target_bound) MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT Status UpdateAndPivot(ColIndex entering_col,
+                                             RowIndex leaving_row,
+                                             Fractional target_bound);
 
   // Displays all the timing stats related to the calling object.
   void DisplayAllStats();
@@ -543,11 +544,11 @@ class RevisedSimplex {
 
   // Minimize the objective function, be it for satisfiability or for
   // optimization. Used by Solve().
-  Status Minimize(TimeLimit* time_limit) MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT Status Minimize(TimeLimit* time_limit);
 
   // Same as Minimize() for the dual simplex algorithm.
   // TODO(user): remove duplicate code between the two functions.
-  Status DualMinimize(TimeLimit* time_limit) MUST_USE_RESULT;
+  ABSL_MUST_USE_RESULT Status DualMinimize(TimeLimit* time_limit);
 
   // Utility functions to return the current ColIndex of the slack column with
   // given number. Note that currently, such columns are always present in the
@@ -579,18 +580,10 @@ class RevisedSimplex {
   // it's as fast as std::unique_ptr as long as the size is properly reserved
   // beforehand.
 
-  // Temporary view of the matrix given to Solve(). Note that it is an error
-  // to access this view once Solve() is finished since there is no guarantee
-  // that the stored pointers are still valid.
-  // TODO(user): The matrix view is identical to the matrix of the linear
-  // program after pre-processing. Investigate if we could get rid of it and use
-  // compact_matrix_ in all places.
-  MatrixView matrix_with_slack_;
-
-  // The compact version of matrix_with_slack_.
+  // Compact version of the matrix given to Solve().
   CompactSparseMatrix compact_matrix_;
 
-  // The tranpose of compact_matrix_, it may be empty if it is not needed.
+  // The transpose of compact_matrix_, it may be empty if it is not needed.
   CompactSparseMatrix transposed_matrix_;
 
   // Stop the algorithm and report feasibility if:
@@ -682,6 +675,10 @@ class RevisedSimplex {
   // Class holding the algorithms to choose the entering column during a simplex
   // pivot.
   EnteringVariable entering_variable_;
+
+  // Temporary memory used by DualMinimize().
+  std::vector<ColIndex> bound_flip_candidates_;
+  std::vector<std::pair<RowIndex, ColIndex>> pair_to_ignore_;
 
   // Total number of iterations performed.
   uint64 num_iterations_;

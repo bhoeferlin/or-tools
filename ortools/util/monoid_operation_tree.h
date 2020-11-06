@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,9 +17,9 @@
 #include <algorithm>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "ortools/base/logging.h"
 #include "ortools/base/macros.h"
-#include "ortools/base/stringprintf.h"
 
 namespace operations_research {
 
@@ -45,7 +45,7 @@ namespace operations_research {
 //   * Have a = operator method that sets its value to the given one.
 //   * Have a Compute(const T& left, const T& right) method that sets its value
 //        to the result of the binary operation for the two given operands.
-//   * Have a std::string DebugString() const method.
+//   * Have a string DebugString() const method.
 //
 // Possible use cases are:
 // * Maintain a sum or a product of doubles, with a guarantee that the queried
@@ -210,11 +210,12 @@ std::string MonoidOperationTree<T>::DebugString() const {
   for (int i = 0; i < num_nodes_; ++i) {
     if (((i + 1) & i) == 0) {
       // New layer
-      StringAppendF(&out, "-------------- Layer %d ---------------\n", layer);
+      absl::StrAppendFormat(&out, "-------------- Layer %d ---------------\n",
+                            layer);
       ++layer;
     }
-    StringAppendF(&out, "Position %d: %s\n", i,
-                  nodes_[i].DebugString().c_str());
+    absl::StrAppendFormat(&out, "Position %d: %s\n", i,
+                          nodes_[i].DebugString());
   }
   return out;
 }

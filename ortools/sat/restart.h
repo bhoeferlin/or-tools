@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "ortools/sat/model.h"
+#include "ortools/sat/sat_decision.h"
 #include "ortools/sat/sat_parameters.pb.h"
 #include "ortools/util/bitset.h"
 #include "ortools/util/running_stat.h"
@@ -28,7 +29,10 @@ namespace sat {
 class RestartPolicy {
  public:
   explicit RestartPolicy(Model* model)
-      : parameters_(*(model->GetOrCreate<SatParameters>())) {}
+      : parameters_(*(model->GetOrCreate<SatParameters>())),
+        decision_policy_(model->GetOrCreate<SatDecisionPolicy>()) {
+    Reset();
+  }
 
   // Resets the policy using the current model parameters.
   void Reset();
@@ -47,18 +51,19 @@ class RestartPolicy {
   // Returns the number of restarts since the last Reset().
   int NumRestarts() const { return num_restarts_; }
 
-  // Returns a std::string with the current restart statistics.
+  // Returns a string with the current restart statistics.
   std::string InfoString() const;
 
  private:
   const SatParameters& parameters_;
+  SatDecisionPolicy* decision_policy_;
 
   int num_restarts_;
   int conflicts_until_next_strategy_change_;
   int strategy_change_conflicts_;
 
   int strategy_counter_;
-  std::vector<int> strategies_;  // SatParameters::RestartAlgorithm
+  std::vector<SatParameters::RestartAlgorithm> strategies_;
 
   int luby_count_;
   int conflicts_until_next_restart_;

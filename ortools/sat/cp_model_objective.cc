@@ -1,4 +1,4 @@
-// Copyright 2010-2017 Google
+// Copyright 2010-2018 Google LLC
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -20,6 +20,7 @@ namespace sat {
 
 void EncodeObjectiveAsSingleVariable(CpModelProto* cp_model) {
   if (!cp_model->has_objective()) return;
+
   if (cp_model->objective().vars_size() == 1) {
     // Canonicalize the objective to make it easier on us by always making the
     // coefficient equal to 1.0.
@@ -30,6 +31,9 @@ void EncodeObjectiveAsSingleVariable(CpModelProto* cp_model) {
       cp_model->mutable_objective()->set_vars(0, NegatedRef(old_ref));
     }
     if (muliplier != 1.0) {
+      // TODO(user): deal with this case.
+      CHECK(cp_model->objective().domain().empty());
+
       double old_factor = cp_model->objective().scaling_factor();
       if (old_factor == 0.0) old_factor = 1.0;
       const double old_offset = cp_model->objective().offset();
@@ -40,17 +44,35 @@ void EncodeObjectiveAsSingleVariable(CpModelProto* cp_model) {
     return;
   }
 
+  // Compute trivial bounds on the objective, this is needed otherwise the
+  // overflow checker might not be happy with the new constraint we are about
+  // to create. Note that the model validator should make sure that there is no
+  // overflow in the computation below.
+  int64 min_obj = 0;
+  int64 max_obj = 0;
+  for (int i = 0; i < cp_model->objective().vars_size(); ++i) {
+    const int ref = cp_model->objective().vars(i);
+    const int var = PositiveRef(ref);
+    const int64 coeff =
+        cp_model->objective().coeffs(i) * (RefIsPositive(ref) ? 1 : -1);
+    const int64 value1 = cp_model->variables(var).domain(0) * coeff;
+    const int64 value2 = cp_model->variables(var).domain(
+                             cp_model->variables(var).domain_size() - 1) *
+                         coeff;
+    min_obj += std::min(value1, value2);
+    max_obj += std::max(value1, value2);
+  }
+
   // Create the new objective var.
   const int obj_ref = cp_model->variables_size();
   {
     IntegerVariableProto* obj = cp_model->add_variables();
-    if (cp_model->objective().domain().empty()) {
-      obj->add_domain(kint64min);
-      obj->add_domain(kint64max);
-    } else {
-      *(obj->mutable_domain()) = cp_model->objective().domain();
-      cp_model->mutable_objective()->clear_domain();
+    Domain obj_domain(min_obj, max_obj);
+    if (!cp_model->objective().domain().empty()) {
+      obj_domain = obj_domain.IntersectionWith(
+          ReadDomainFromProto(cp_model->objective()));
     }
+    FillDomainInProto(obj_domain, obj);
   }
 
   // Add the linear constraint.
@@ -67,6 +89,7 @@ void EncodeObjectiveAsSingleVariable(CpModelProto* cp_model) {
   cp_model->mutable_objective()->clear_coeffs();
   cp_model->mutable_objective()->add_vars(obj_ref);
   cp_model->mutable_objective()->add_coeffs(1);
+  cp_model->mutable_objective()->clear_domain();
 }
 
 }  // namespace sat
